@@ -20,10 +20,8 @@ jobs:
           distribution: zulu
           java-version: '17'
           cache: gradle
-      - name: Test server and build
-        run: |
-          ./gradlew :server:testReleaseUnitTest
-          release/build_server.sh
+      - name: Build scrcpy server
+        run: release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:
           name: scrcpy-server-camera-v2

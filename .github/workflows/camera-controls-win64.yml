@@ -19,6 +19,8 @@ jobs:
         with:
           distribution: zulu
           java-version: '17'
+      - name: Apply POCO Camera2 controls
+        run: python3 release/apply_poco_camera_controls.py
       - name: Build scrcpy server
         run: release/build_server.sh
       - uses: actions/upload-artifact@v7
@@ -34,6 +36,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y meson ninja-build nasm mingw-w64 mingw-w64-tools libz-mingw-w64-dev
+      - name: Apply POCO Camera2 controls
+        run: python3 release/apply_poco_camera_controls.py
       - name: Build Windows x64 client
         run: release/build_windows.sh 64
       - name: Pack intermediate client

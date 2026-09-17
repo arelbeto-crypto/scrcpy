@@ -30,6 +30,8 @@ public final class ControlMessage {
     public static final int TYPE_CAMERA_ZOOM_OUT = 20;
     public static final int TYPE_RESIZE_DISPLAY = 21;
     public static final int TYPE_SCAN_FILE = 22;
+    public static final int TYPE_CAMERA_CONTROL = 23;
+    public static final int TYPE_CAMERA_METERING = 24;
 
     public static final long SEQUENCE_INVALID = 0;
 
@@ -60,6 +62,32 @@ public final class ControlMessage {
     private int productId;
     private int width;
     private int height;
+    private int cameraCommand;
+    private int cameraValue;
+
+    public static ControlMessage createCameraControl(int command, int value) {
+        ControlMessage msg = new ControlMessage();
+        msg.type = TYPE_CAMERA_CONTROL;
+        msg.cameraCommand = command;
+        msg.cameraValue = value;
+        return msg;
+    }
+
+    public static ControlMessage createCameraMetering(boolean exposure, Position position) {
+        ControlMessage msg = new ControlMessage();
+        msg.type = TYPE_CAMERA_METERING;
+        msg.on = exposure;
+        msg.position = position;
+        return msg;
+    }
+
+    public int getCameraCommand() {
+        return cameraCommand;
+    }
+
+    public int getCameraValue() {
+        return cameraValue;
+    }
 
     private ControlMessage() {
     }

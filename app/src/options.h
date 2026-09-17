@@ -251,6 +251,8 @@ struct scrcpy_options {
     const char *camera_size;
     const char *camera_ar;
     const char *camera_zoom;
+    const char *camera_ev;
+    const char *camera_focus_distance;
     uint16_t camera_fps;
     enum sc_log_level log_level;
     enum sc_codec video_codec;
@@ -342,6 +344,12 @@ struct scrcpy_options {
     bool vd_destroy_content;
     bool vd_system_decorations;
     bool camera_torch;
+    uint32_t camera_iso;
+    uint64_t camera_exposure;
+    bool camera_awb_lock;
+    bool camera_ae_lock;
+    bool camera_ois;
+    bool camera_eis;
     bool keep_active;
     bool flex_display;
     bool ignore_video_encoder_constraints;

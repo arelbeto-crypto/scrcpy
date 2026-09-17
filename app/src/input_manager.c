@@ -349,6 +349,75 @@ apply_orientation_transform(struct sc_input_manager *im,
     sc_screen_set_orientation(screen, new_orientation);
 }
 
+// Camera commands are handled before the display rotation shortcuts. Screen
+// mirroring keeps the original shortcuts, and camera rotation is MOD+r.
+static bool
+camera_shortcut(struct sc_input_manager *im, const SDL_KeyboardEvent *event) {
+    bool shift = event->mod & SDL_KMOD_SHIFT;
+    enum sc_camera_command command;
+    int32_t value = 0;
+    bool repeatable = false;
+    switch (event->key) {
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+            command = shift ? SC_CAMERA_ISO : SC_CAMERA_FOCUS;
+            value = event->key == SDLK_RIGHT ? 1 : -1;
+            repeatable = true;
+            break;
+        case SDLK_UP:
+        case SDLK_DOWN:
+            if (!shift) {
+                return false; // Existing zoom shortcuts
+            }
+            command = SC_CAMERA_EXPOSURE;
+            value = event->key == SDLK_UP ? 1 : -1;
+            repeatable = true;
+            break;
+        case SDLK_PAGEUP:
+        case SDLK_PAGEDOWN:
+            command = SC_CAMERA_EV;
+            value = event->key == SDLK_PAGEUP ? 1 : -1;
+            repeatable = true;
+            break;
+        case SDLK_A:
+            command = shift ? SC_CAMERA_AUTO_EXPOSURE : SC_CAMERA_AUTO_FOCUS;
+            break;
+        case SDLK_L:
+            command = shift ? SC_CAMERA_AWB_LOCK : SC_CAMERA_AE_LOCK;
+            break;
+        case SDLK_K:
+            command = SC_CAMERA_FOCUS_LOCK;
+            break;
+        case SDLK_O:
+            command = shift ? SC_CAMERA_EIS : SC_CAMERA_OIS;
+            break;
+        case SDLK_B:
+            command = SC_CAMERA_AWB_MODE;
+            value = shift ? -1 : 1;
+            break;
+        case SDLK_0:
+            command = SC_CAMERA_RESET_AUTO;
+            break;
+        case SDLK_H:
+            command = SC_CAMERA_INFO;
+            break;
+        default:
+            return false;
+    }
+    if (im->controller && !im->disconnected && !im->screen->paused
+            && event->type == SDL_EVENT_KEY_DOWN
+            && (!event->repeat || repeatable)) {
+        struct sc_control_msg msg = {
+            .type = SC_CONTROL_MSG_TYPE_CAMERA_CONTROL,
+            .camera_control = {.command = command, .value = value},
+        };
+        if (!sc_controller_push_msg(im->controller, &msg)) {
+            LOGW("Could not send camera command");
+        }
+    }
+    return true;
+}
+
 static void
 sc_input_manager_process_text_input(struct sc_input_manager *im,
                                     const SDL_TextInputEvent *event) {
@@ -449,6 +518,32 @@ sc_input_manager_process_key(struct sc_input_manager *im,
 
     // Shortcuts that do not involve the MOD key
     switch (sdl_keycode) {
+        case SDLK_F1:
+            if (im->camera && down && !repeat) {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,
+                    "Controles de camara POCO",
+                    "Con la ventana de camara activa (MOD = Alt izquierdo):\n"
+                    "Clic: enfocar. Shift + clic: exposicion independiente.\n"
+                    "MOD + Arriba/Abajo: zoom\n"
+                    "MOD + Izquierda/Derecha: enfoque lejos/cerca\n"
+                    "MOD + Shift + Izquierda/Derecha: ISO -/+\n"
+                    "MOD + Shift + Abajo/Arriba: obturacion corta/larga\n"
+                    "MOD + RePag/AvPag: EV +/-\n"
+                    "MOD + A: autofocus. MOD + Shift + A: exposicion auto\n"
+                    "MOD + K: fijar enfoque. MOD + L: bloqueo AE\n"
+                    "MOD + Shift + L: bloqueo balance de blancos\n"
+                    "MOD + B: balance de blancos (Shift: anterior)\n"
+                    "MOD + O: OIS. MOD + Shift + O: EIS\n"
+                    "MOD + T: linterna (Shift: apagar)\n"
+                    "MOD + 0: enfoque, exposicion y blancos automaticos\n"
+                    "MOD + H: valores y capacidades en la consola\n"
+                    "MOD + R: girar imagen. F11: pantalla completa\n\n"
+                    "ELEGIR_LENTE.bat abre cada camara en otra ventana.\n"
+                    "Los cambios y controles no disponibles se informan "
+                    "en la consola.", im->screen->window);
+                return;
+            }
+            break;
         case SDLK_F11:
             if (video && !repeat && down) {
                 bool alt = event->mod & SDL_KMOD_ALT;
@@ -461,6 +556,9 @@ sc_input_manager_process_key(struct sc_input_manager *im,
     }
 
     if (is_shortcut) {
+        if (im->camera && camera_shortcut(im, event)) {
+            return;
+        }
         enum sc_action action = down ? SC_ACTION_DOWN : SC_ACTION_UP;
         switch (sdl_keycode) {
             case SDLK_Z:
@@ -648,6 +746,11 @@ sc_input_manager_process_key(struct sc_input_manager *im,
 
         if (control && im->camera) {
             switch (sdl_keycode) {
+                case SDLK_R:
+                    if (!shift && !repeat && down && video) {
+                        apply_orientation_transform(im, SC_ORIENTATION_90);
+                    }
+                    return;
                 case SDLK_T:
                     if (!repeat && down) {
                         camera_set_torch(im, !shift);
@@ -841,7 +944,36 @@ sc_input_manager_process_mouse_button(struct sc_input_manager *im,
     // some mouse events do not interact with the device, so process the event
     // even if control is disabled
 
-    if (im->camera || im->disconnected) {
+    if (im->disconnected) {
+        return;
+    }
+
+    if (im->camera) {
+        if (im->controller && !im->screen->paused
+                && event->type == SDL_EVENT_MOUSE_BUTTON_DOWN
+                && event->button == SDL_BUTTON_LEFT) {
+            struct sc_position position = {
+                .screen_size = im->screen->frame_size,
+                .point = sc_screen_convert_window_to_frame_coords(im->screen,
+                                                       event->x, event->y),
+            };
+            // Ignore letterbox borders. The conversion already undoes the
+            // client-side display rotation and mirroring.
+            if (position.point.x >= 0 && position.point.y >= 0
+                    && position.point.x < position.screen_size.width
+                    && position.point.y < position.screen_size.height) {
+                struct sc_control_msg msg = {
+                    .type = SC_CONTROL_MSG_TYPE_CAMERA_METERING,
+                    .camera_metering = {
+                        .exposure = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0,
+                        .position = position,
+                    },
+                };
+                if (!sc_controller_push_msg(im->controller, &msg)) {
+                    LOGW("Could not send camera metering point");
+                }
+            }
+        }
         return;
     }
 

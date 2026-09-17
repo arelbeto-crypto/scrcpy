@@ -50,6 +50,26 @@ enum sc_control_msg_type {
     SC_CONTROL_MSG_TYPE_CAMERA_ZOOM_OUT,
     SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY,
     SC_CONTROL_MSG_TYPE_SCAN_FILE,
+    SC_CONTROL_MSG_TYPE_CAMERA_CONTROL,
+    SC_CONTROL_MSG_TYPE_CAMERA_METERING,
+};
+
+// Keep in sync with CameraControls.java. Values are signed relative steps.
+enum sc_camera_command {
+    SC_CAMERA_FOCUS,
+    SC_CAMERA_ISO,
+    SC_CAMERA_EXPOSURE,
+    SC_CAMERA_EV,
+    SC_CAMERA_AUTO_FOCUS,
+    SC_CAMERA_AUTO_EXPOSURE,
+    SC_CAMERA_AE_LOCK,
+    SC_CAMERA_AWB_LOCK,
+    SC_CAMERA_OIS,
+    SC_CAMERA_EIS,
+    SC_CAMERA_FOCUS_LOCK,
+    SC_CAMERA_AWB_MODE,
+    SC_CAMERA_RESET_AUTO,
+    SC_CAMERA_INFO,
 };
 
 enum sc_copy_key {
@@ -128,6 +148,14 @@ struct sc_control_msg {
         struct {
             char *path; // owned, to be freed by free()
         } scan_file;
+        struct {
+            enum sc_camera_command command;
+            int32_t value;
+        } camera_control;
+        struct {
+            bool exposure;
+            struct sc_position position;
+        } camera_metering;
     };
 };
 

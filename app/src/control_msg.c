@@ -185,6 +185,14 @@ sc_control_msg_serialize(const struct sc_control_msg *msg, uint8_t *buf) {
         case SC_CONTROL_MSG_TYPE_CAMERA_SET_TORCH:
             buf[1] = msg->camera_set_torch.on ? 1 : 0;
             return 2;
+        case SC_CONTROL_MSG_TYPE_CAMERA_CONTROL:
+            buf[1] = msg->camera_control.command;
+            sc_write32be(&buf[2], (uint32_t) msg->camera_control.value);
+            return 6;
+        case SC_CONTROL_MSG_TYPE_CAMERA_METERING:
+            buf[1] = msg->camera_metering.exposure;
+            write_position(&buf[2], &msg->camera_metering.position);
+            return 14;
         case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:
             sc_write16be(&buf[1], msg->resize_display.width);
             sc_write16be(&buf[3], msg->resize_display.height);
@@ -342,6 +350,17 @@ sc_control_msg_log(const struct sc_control_msg *msg) {
             break;
         case SC_CONTROL_MSG_TYPE_CAMERA_ZOOM_IN:
             LOG_CMSG("camera zoom in");
+            break;
+        case SC_CONTROL_MSG_TYPE_CAMERA_CONTROL:
+            LOG_CMSG("camera command=%u value=%" PRIi32,
+                     (unsigned) msg->camera_control.command,
+                     msg->camera_control.value);
+            break;
+        case SC_CONTROL_MSG_TYPE_CAMERA_METERING:
+            LOG_CMSG("camera %s point=%" PRIi32 ",%" PRIi32,
+                     msg->camera_metering.exposure ? "AE" : "AF",
+                     msg->camera_metering.position.point.x,
+                     msg->camera_metering.position.point.y);
             break;
         case SC_CONTROL_MSG_TYPE_CAMERA_ZOOM_OUT:
             LOG_CMSG("camera zoom out");

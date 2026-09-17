@@ -25,6 +25,7 @@ import android.os.Build;
 import android.util.Range;
 
 import java.text.DecimalFormat;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -187,6 +188,11 @@ public final class LogUtils {
                     }
 
                     builder.append(')');
+
+                    builder.append(" focal-mm=").append(Arrays.toString(characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)));
+                    if (Build.VERSION.SDK_INT >= AndroidVersions.API_28_ANDROID_9) {
+                        builder.append(" physical-ids=").append(characteristics.getPhysicalCameraIds());
+                    }
 
                     if (includeSizes) {
                         StreamConfigurationMap configs = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);

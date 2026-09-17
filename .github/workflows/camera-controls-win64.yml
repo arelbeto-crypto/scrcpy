@@ -1,0 +1,71 @@
+name: POCO Camera Controls Win64
+
+on:
+  push:
+    branches: [camera-controls-poco-v1]
+  workflow_dispatch:
+
+env:
+  VERSION: camera-controls-poco-v1
+
+jobs:
+  build-server:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE: gradle
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Build scrcpy server
+        run: release/build_server.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scrcpy-server-camera-v1
+          path: release/work/build-server/server/scrcpy-server
+
+  build-win64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y meson ninja-build nasm mingw-w64 mingw-w64-tools libz-mingw-w64-dev
+      - name: Build Windows x64 client
+        run: release/build_windows.sh 64
+      - name: Pack intermediate client
+        run: |
+          cd release/work/build-win64
+          mkdir dist-tar
+          tar -C . -cvf dist-tar/dist.tar.gz dist/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-win64-camera-v1
+          path: release/work/build-win64/dist-tar/
+
+  package-win64:
+    needs: [build-server, build-win64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: scrcpy-server-camera-v1
+          path: release/work/build-server/server/
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-win64-camera-v1
+          path: release/work/build-win64/dist-tar/
+      - name: Assemble portable Windows package
+        run: |
+          cd release/work/build-win64
+          tar xf dist-tar/dist.tar.gz
+          cd ../../..
+          release/package_client.sh win64 zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scrcpy-camera-controls-poco-v1-win64
+          path: release/output/

@@ -22,7 +22,7 @@ jobs:
           cache: gradle
       - name: Test server and build
         run: |
-          gradle -p server testReleaseUnitTest
+          ./gradlew :server:testReleaseUnitTest
           release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:

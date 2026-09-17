@@ -537,6 +537,38 @@ static void test_serialize_scan_file(void) {
     assert(!memcmp(buf, expected, sizeof(expected)));
 }
 
+static void test_camera_live_protocol(void) {
+    uint8_t buf[SC_CONTROL_MSG_MAX_SIZE];
+    struct sc_control_msg msg = {
+        .type = SC_CONTROL_MSG_TYPE_CAMERA_CONTROL,
+        .camera_control = {.command = SC_CAMERA_ISO, .value = -1},
+    };
+    // Fixed wire fixtures are also consumed by ControlMessageReaderTest.
+    const uint8_t less_iso[] = {23, 1, 255, 255, 255, 255};
+    assert(sc_control_msg_serialize(&msg, buf) == sizeof(less_iso));
+    assert(!memcmp(buf, less_iso, sizeof(less_iso)));
+    msg.camera_control.command = SC_CAMERA_EXPOSURE;
+    msg.camera_control.value = 1;
+    const uint8_t more_exposure[] = {23, 2, 0, 0, 0, 1};
+    assert(sc_control_msg_serialize(&msg, buf) == sizeof(more_exposure));
+    assert(!memcmp(buf, more_exposure, sizeof(more_exposure)));
+
+    msg.type = SC_CONTROL_MSG_TYPE_CAMERA_METERING;
+    msg.camera_metering.exposure = true;
+    msg.camera_metering.position = (struct sc_position) {
+        .point = {960, 540}, .screen_size = {1920, 1080},
+    };
+    const uint8_t ae_point[] = {
+        24, 1, 0, 0, 3, 192, 0, 0, 2, 28, 7, 128, 4, 56,
+    };
+    assert(sc_control_msg_serialize(&msg, buf) == sizeof(ae_point));
+    assert(!memcmp(buf, ae_point, sizeof(ae_point)));
+    msg.camera_metering.exposure = false;
+    assert(sc_control_msg_serialize(&msg, buf) == 14);
+    assert(buf[1] == 0); // AF and AE must remain separate commands.
+    assert(!memcmp(buf + 2, ae_point + 2, sizeof(ae_point) - 2));
+}
+
 int main(int argc, char *argv[]) {
     (void) argc;
     (void) argv;
@@ -566,5 +598,6 @@ int main(int argc, char *argv[]) {
     test_serialize_camera_zoom_out();
     test_serialize_resize_display();
     test_serialize_scan_file();
+    test_camera_live_protocol();
     return 0;
 }

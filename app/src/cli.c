@@ -107,6 +107,11 @@ enum {
     OPT_CAMERA_ISO,
     OPT_CAMERA_EXPOSURE,
     OPT_CAMERA_AWB_LOCK,
+    OPT_CAMERA_AE_LOCK,
+    OPT_CAMERA_EV,
+    OPT_CAMERA_FOCUS_DISTANCE,
+    OPT_CAMERA_OIS,
+    OPT_CAMERA_EIS,
     OPT_MIN_SIZE_ALIGNMENT,
     OPT_NO_WINDOW_ASPECT_RATIO_LOCK,
     OPT_KEEP_ACTIVE,
@@ -345,6 +350,33 @@ static const struct sc_option options[] = {
         .longopt_id = OPT_CAMERA_AWB_LOCK,
         .longopt = "camera-awb-lock",
         .text = "Lock the auto white balance (AWB) when the camera starts.",
+    },
+    {
+        .longopt_id = OPT_CAMERA_AE_LOCK,
+        .longopt = "camera-ae-lock",
+        .text = "Lock auto exposure (AE) when the camera starts.",
+    },
+    {
+        .longopt_id = OPT_CAMERA_EV,
+        .longopt = "camera-ev",
+        .argdesc = "ev",
+        .text = "Set initial exposure compensation in EV (for example -1.0, 0.5 or 2).",
+    },
+    {
+        .longopt_id = OPT_CAMERA_FOCUS_DISTANCE,
+        .longopt = "camera-focus-distance",
+        .argdesc = "diopters",
+        .text = "Set manual focus distance in diopters (0 means infinity).",
+    },
+    {
+        .longopt_id = OPT_CAMERA_OIS,
+        .longopt = "camera-ois",
+        .text = "Enable optical image stabilization when supported.",
+    },
+    {
+        .longopt_id = OPT_CAMERA_EIS,
+        .longopt = "camera-eis",
+        .text = "Enable electronic/video stabilization when supported.",
     },
     {
         .longopt_id = OPT_CAPTURE_ORIENTATION,
@@ -2934,6 +2966,21 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             case OPT_CAMERA_AWB_LOCK:
                 opts->camera_awb_lock = true;
                 break;
+            case OPT_CAMERA_AE_LOCK:
+                opts->camera_ae_lock = true;
+                break;
+            case OPT_CAMERA_EV:
+                opts->camera_ev = optarg;
+                break;
+            case OPT_CAMERA_FOCUS_DISTANCE:
+                opts->camera_focus_distance = optarg;
+                break;
+            case OPT_CAMERA_OIS:
+                opts->camera_ois = true;
+                break;
+            case OPT_CAMERA_EIS:
+                opts->camera_eis = true;
+                break;
             case OPT_NO_WINDOW:
                 opts->window = false;
                 break;
@@ -3306,6 +3353,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             return false;
         }
 
+        if (opts->camera_ev && opts->camera_iso > 0) {
+            LOGE("--camera-ev cannot be combined with manual ISO/exposure");
+            return false;
+        }
+
         if (opts->control) {
             // Disable all inputs for camera
             opts->keyboard_input_mode = SC_KEYBOARD_INPUT_MODE_DISABLED;
@@ -3320,7 +3372,12 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             || opts->camera_size
             || opts->camera_iso
             || opts->camera_exposure
-            || opts->camera_awb_lock) {
+            || opts->camera_awb_lock
+            || opts->camera_ae_lock
+            || opts->camera_ev
+            || opts->camera_focus_distance
+            || opts->camera_ois
+            || opts->camera_eis) {
         LOGE("Camera options are only available with --video-source=camera");
         return false;
     }

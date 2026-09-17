@@ -16,6 +16,36 @@ import java.util.Arrays;
 public class ControlMessageReaderTest {
 
     @Test
+    public void testLiveCameraWireFixtures() throws IOException {
+        // Exact fixtures from the C serializer; adjacent messages verify framing.
+        byte[] wire = {23, 1, -1, -1, -1, -1, 23, 2, 0, 0, 0, 1,
+                24, 1, 0, 0, 3, -64, 0, 0, 2, 28, 7, -128, 4, 56, 19};
+        ControlMessageReader reader = new ControlMessageReader(new ByteArrayInputStream(wire));
+        ControlMessage message = reader.read();
+        Assert.assertEquals(ControlMessage.TYPE_CAMERA_CONTROL, message.getType());
+        Assert.assertEquals(1, message.getCameraCommand());
+        Assert.assertEquals(-1, message.getCameraValue());
+        message = reader.read();
+        Assert.assertEquals(2, message.getCameraCommand());
+        Assert.assertEquals(1, message.getCameraValue());
+        message = reader.read();
+        Assert.assertEquals(ControlMessage.TYPE_CAMERA_METERING, message.getType());
+        Assert.assertTrue(message.getOn());
+        Assert.assertEquals(new com.genymobile.scrcpy.model.Position(960, 540, 1920, 1080), message.getPosition());
+        Assert.assertEquals(ControlMessage.TYPE_CAMERA_ZOOM_IN, reader.read().getType());
+    }
+
+    @Test(expected = EOFException.class)
+    public void testTruncatedCameraControl() throws IOException {
+        new ControlMessageReader(new ByteArrayInputStream(new byte[]{23, 1, -1, -1, -1})).read();
+    }
+
+    @Test(expected = EOFException.class)
+    public void testTruncatedCameraMetering() throws IOException {
+        new ControlMessageReader(new ByteArrayInputStream(new byte[]{24, 0, 0, 0, 0})).read();
+    }
+
+    @Test
     public void testParseKeycodeEvent() throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);

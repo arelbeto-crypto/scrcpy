@@ -52,6 +52,11 @@ public class Options {
     private int cameraIso = 0; // 0 = Auto / Unset
     private long cameraExposure = 0L; // 0 = Auto / Unset (in nanoseconds)
     private boolean cameraAwbLock = false;
+    private boolean cameraAeLock = false;
+    private float cameraEv = 0f;
+    private float cameraFocusDistance = -1f;
+    private boolean cameraOis = false;
+    private boolean cameraEis = false;
     private boolean showTouches;
     private boolean stayAwake;
     private int screenOffTimeout = -1;
@@ -208,6 +213,26 @@ public class Options {
 
     public boolean isCameraAwbLock() {
         return cameraAwbLock;
+    }
+
+    public boolean isCameraAeLock() {
+        return cameraAeLock;
+    }
+
+    public float getCameraEv() {
+        return cameraEv;
+    }
+
+    public float getCameraFocusDistance() {
+        return cameraFocusDistance;
+    }
+
+    public boolean isCameraOis() {
+        return cameraOis;
+    }
+
+    public boolean isCameraEis() {
+        return cameraEis;
     }
 
     public boolean getShowTouches() {
@@ -544,6 +569,24 @@ public class Options {
                     break;
                 case "camera_awb_lock":
                     options.cameraAwbLock = Boolean.parseBoolean(value);
+                    break;
+                case "camera_ae_lock":
+                    options.cameraAeLock = Boolean.parseBoolean(value);
+                    break;
+                case "camera_ev":
+                    options.cameraEv = parseFloat("camera_ev", value);
+                    break;
+                case "camera_focus_distance":
+                    options.cameraFocusDistance = parseFloat("camera_focus_distance", value);
+                    if (options.cameraFocusDistance < 0f) {
+                        throw new IllegalArgumentException("camera_focus_distance must be >= 0");
+                    }
+                    break;
+                case "camera_ois":
+                    options.cameraOis = Boolean.parseBoolean(value);
+                    break;
+                case "camera_eis":
+                    options.cameraEis = Boolean.parseBoolean(value);
                     break;
                 case "new_display":
                     options.newDisplay = parseNewDisplay(value);

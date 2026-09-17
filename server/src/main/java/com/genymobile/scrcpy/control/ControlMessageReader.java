@@ -64,6 +64,10 @@ public class ControlMessageReader {
                 return parseResizeDisplay();
             case ControlMessage.TYPE_SCAN_FILE:
                 return parseScanFile();
+            case ControlMessage.TYPE_CAMERA_CONTROL:
+                return ControlMessage.createCameraControl(dis.readUnsignedByte(), dis.readInt());
+            case ControlMessage.TYPE_CAMERA_METERING:
+                return ControlMessage.createCameraMetering(dis.readBoolean(), parsePosition());
             default:
                 throw new ControlProtocolException("Unknown event type: " + type);
         }

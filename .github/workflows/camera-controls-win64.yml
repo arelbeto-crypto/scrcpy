@@ -1,4 +1,4 @@
-name: POCO Camera Controls Win64
+name: POCO Live Camera Controls V2
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  VERSION: camera-controls-poco-v1
+  VERSION: camera-controls-poco-v2
 
 jobs:
   build-server:
@@ -19,13 +19,14 @@ jobs:
         with:
           distribution: zulu
           java-version: '17'
-      - name: Apply POCO Camera2 controls
-        run: python3 release/apply_poco_camera_controls.py
-      - name: Build scrcpy server
-        run: release/build_server.sh
+          cache: gradle
+      - name: Test server and build
+        run: |
+          gradle -p server testReleaseUnitTest
+          release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-server-camera-v1
+          name: scrcpy-server-camera-v2
           path: release/work/build-server/server/scrcpy-server
 
   build-win64:
@@ -36,8 +37,10 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y meson ninja-build nasm mingw-w64 mingw-w64-tools libz-mingw-w64-dev
-      - name: Apply POCO Camera2 controls
-        run: python3 release/apply_poco_camera_controls.py
+      - uses: actions/cache@v4
+        with:
+          path: app/deps/work
+          key: poco-win64-deps-${{ hashFiles('app/deps/*.sh', 'app/deps/_*', 'cross_win64.txt') }}
       - name: Build Windows x64 client
         run: release/build_windows.sh 64
       - name: Pack intermediate client
@@ -47,29 +50,77 @@ jobs:
           tar -C . -cvf dist-tar/dist.tar.gz dist/
       - uses: actions/upload-artifact@v7
         with:
-          name: build-win64-camera-v1
+          name: build-win64-camera-v2
           path: release/work/build-win64/dist-tar/
 
   package-win64:
-    needs: [build-server, build-win64]
+    needs: [build-server, build-win64, test-client]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-server-camera-v1
+          name: scrcpy-server-camera-v2
           path: release/work/build-server/server/
       - uses: actions/download-artifact@v8
         with:
-          name: build-win64-camera-v1
+          name: build-win64-camera-v2
           path: release/work/build-win64/dist-tar/
       - name: Assemble portable Windows package
         run: |
           cd release/work/build-win64
           tar xf dist-tar/dist.tar.gz
           cd ../../..
+          cp release/poco/* release/work/build-win64/dist/
+          printf '%s\n' "Commit: $GITHUB_SHA" "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > release/work/build-win64/dist/BUILD_INFO.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-controls-poco-v1-win64
+          name: scrcpy-camera-controls-poco-v2-win64
           path: release/output/
+
+  test-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install native test dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y meson ninja-build cmake nasm pkg-config libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libavdevice-dev libusb-1.0-0-dev libv4l-dev libasound2-dev libpulse-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev libwayland-dev libdecor-0-dev liburing-dev
+      - uses: actions/cache@v4
+        with:
+          path: app/deps/work
+          key: poco-native-sdl-${{ hashFiles('app/deps/sdl.sh', 'app/deps/_*') }}
+      - name: Install SDL3
+        run: app/deps/sdl.sh linux native shared
+      - name: Test client with sanitizers
+        run: |
+          export PKG_CONFIG_PATH="$PWD/app/deps/work/install/linux-native-shared/lib/pkgconfig"
+          export LD_LIBRARY_PATH="$PWD/app/deps/work/install/linux-native-shared/lib"
+          release/test_client.sh
+
+  smoke-windows:
+    needs: package-win64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: scrcpy-camera-controls-poco-v2-win64
+          path: package
+      - name: Check portable executable and lens selector
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem package -Filter *.zip | Select-Object -First 1
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath unpacked
+          $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
+          $version = & $exe.FullName --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco2') { throw "scrcpy failed to start: $version" }
+          $help = & $exe.FullName --help 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $help -notmatch 'camera-focus-distance') { throw 'Camera options missing' }
+          $tokens = $null
+          $parseErrors = $null
+          $selector = Join-Path $exe.DirectoryName 'ELEGIR_LENTE.ps1'
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($selector, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          Write-Host $version
+          Write-Host 'Portable Windows executable and PowerShell selector verified.'

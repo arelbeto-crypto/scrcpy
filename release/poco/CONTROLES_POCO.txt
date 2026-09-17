@@ -1,0 +1,63 @@
+POCO V2 - CONTROLES EN VIVO
+
+Extrae la carpeta completa. Abre INICIAR_POCO.bat.
+Para detectar el telefono y elegir una lente, abre ELEGIR_LENTE.bat.
+Haz clic en la ventana de la camara para que reciba el teclado.
+F1 abre esta ayuda resumida. No necesitas editar codigo ni reiniciar para ajustar.
+
+ATAJOS (ALT IZQUIERDO)
+Alt + Arriba / Abajo             Zoom acercar / alejar
+Alt + Izquierda / Derecha        Enfoque manual lejos / cerca
+Alt + Shift + Izq. / Der.        ISO bajar / subir
+Alt + Shift + Abajo / Arriba     Obturacion mas corta / mas larga
+Alt + RePag / AvPag              Compensacion EV subir / bajar
+Alt + A                         Volver a autofocus continuo
+Alt + Shift + A                 Volver a exposicion automatica
+Alt + K                         Fijar el enfoque actual (Alt+A lo libera)
+Alt + L                         Activar/desactivar bloqueo de exposicion AE
+Alt + Shift + L                 Activar/desactivar bloqueo de blancos AWB
+Alt + B                         Siguiente balance de blancos disponible
+Alt + Shift + B                 Balance de blancos anterior
+Alt + O                         Activar/desactivar estabilizacion optica OIS
+Alt + Shift + O                 Activar/desactivar estabilizacion electronica EIS
+Alt + T / Alt + Shift + T        Linterna encender / apagar
+Alt + 0                         Enfoque, exposicion y blancos automaticos; EV=0
+Alt + H                         Mostrar capacidades y valores en la consola
+Alt + R                         Girar la imagen
+F11                             Pantalla completa
+
+PUNTOS INDEPENDIENTES
+Clic izquierdo                  Enfocar esa zona; mantiene la exposicion.
+Shift + clic izquierdo          Medir luz en esa zona; mantiene el enfoque.
+Tras enfocar con clic, el foco queda en modo AF puntual. Alt+A vuelve al continuo.
+El punto AE vuelve a exposicion automatica y desbloquea AE, si estaba bloqueado.
+
+COMPORTAMIENTO
+Los valores solicitados aparecen en la consola al cambiar un ajuste.
+Alt+H incluye la ultima medicion real devuelta por el sensor.
+ISO y obturacion suben/bajan por tercios de paso. Al pasar a manual se conserva
+la ultima medicion automatica del parametro que no estas cambiando.
+EV usa el paso anunciado por cada lente (por ejemplo, 1/6 EV).
+Si ISO/obturacion estan en manual, Alt+Shift+A permite volver a usar EV.
+Una obturacion larga puede reducir los FPS. Para 30 FPS suele usarse 1/60 s.
+OIS y EIS son alternativas: activar uno desactiva el otro.
+Solo se usan capacidades anunciadas por la lente elegida. Si no admite un
+control, la consola lo indica. Las capturas de alta velocidad no admiten estos
+controles manuales en esta version.
+
+LENTES Y VENTANAS
+ELEGIR_LENTE.bat consulta las camaras disponibles por Camera2 en tu telefono.
+Un numero cambia de camara cerrando las ventanas abiertas por ese selector.
++numero abre otra instancia; por ejemplo, +2 abre la segunda camara en otra
+ventana. No cierra ventanas que hayas abierto fuera del selector.
+No todos los telefonos permiten varias camaras a la vez. Si Android rechaza
+la segunda, cambia de lente cerrando la anterior.
+El zoom respeta el rango de la camara elegida, incluido menos de 1x si lo ofrece.
+En una camara logica, Android puede cambiar de sensor con el zoom. La consola
+indica la lente fisica activa si el telefono proporciona ese dato.
+physical-ids muestra sensores agrupados: no significa que se puedan abrir
+directamente. El selector solo ofrece IDs publicos que Camera2 enumera.
+
+Esta version usa scrcpy 4.1-poco2 en cliente y servidor. No mezcles sus archivos
+con la V1 u otras versiones. No requiere root. La validacion final de imagen,
+lentes simultaneas y controles requiere el POCO fisico.

@@ -380,6 +380,23 @@ execute_server(struct sc_server *server,
     if (params->camera_awb_lock) {
         ADD_PARAM("camera_awb_lock=true");
     }
+    if (params->camera_ae_lock) {
+        ADD_PARAM("camera_ae_lock=true");
+    }
+    if (params->camera_ev) {
+        VALIDATE_STRING(params->camera_ev);
+        ADD_PARAM("camera_ev=%s", params->camera_ev);
+    }
+    if (params->camera_focus_distance) {
+        VALIDATE_STRING(params->camera_focus_distance);
+        ADD_PARAM("camera_focus_distance=%s", params->camera_focus_distance);
+    }
+    if (params->camera_ois) {
+        ADD_PARAM("camera_ois=true");
+    }
+    if (params->camera_eis) {
+        ADD_PARAM("camera_eis=true");
+    }
     if (params->show_touches) {
         ADD_PARAM("show_touches=true");
     }

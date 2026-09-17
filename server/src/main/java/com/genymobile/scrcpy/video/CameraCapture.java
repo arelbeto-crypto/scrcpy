@@ -2,6 +2,9 @@ package com.genymobile.scrcpy.video;
 
 import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.Options;
+import com.genymobile.scrcpy.control.PositionMapper;
+import com.genymobile.scrcpy.model.Point;
+import com.genymobile.scrcpy.model.Position;
 import com.genymobile.scrcpy.model.ConfigurationException;
 import com.genymobile.scrcpy.model.Orientation;
 import com.genymobile.scrcpy.model.Size;
@@ -25,6 +28,7 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.OutputConfiguration;
 import android.hardware.camera2.params.SessionConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
@@ -66,9 +70,7 @@ public class CameraCapture extends SurfaceCapture {
     private final Orientation captureOrientation;
     private final float angle;
     private final boolean initialTorch;
-    private final int manualIso;
-    private final long manualExposureNs;
-    private final boolean awbLock;
+    private final Options options;
     private float zoom;
 
     private VideoConstraints videoConstraints;
@@ -92,6 +94,9 @@ public class CameraCapture extends SurfaceCapture {
     private boolean started;
     private CaptureRequest.Builder requestBuilder;
     private CameraCaptureSession currentSession;
+    private CameraControls cameraControls;
+    private PositionMapper positionMapper;
+    private Size meteringCaptureSize;
 
     public CameraCapture(Options options) {
         this.explicitCameraId = options.getCameraId();
@@ -105,9 +110,7 @@ public class CameraCapture extends SurfaceCapture {
         assert captureOrientation != null;
         this.angle = options.getAngle();
         this.initialTorch = options.getCameraTorch();
-        this.manualIso = options.getCameraIso();
-        this.manualExposureNs = options.getCameraExposure();
-        this.awbLock = options.isCameraAwbLock();
+        this.options = options;
         this.zoom = options.getCameraZoom();
     }
 
@@ -296,6 +299,8 @@ public class CameraCapture extends SurfaceCapture {
         });
 
         Surface captureSurface = surface;
+        PositionMapper sessionMapper = PositionMapper.create(videoSize, transform, captureSize);
+        Size sessionCaptureSize = captureSize;
         OutputConfiguration outputConfig = new OutputConfiguration(captureSurface);
         List<OutputConfiguration> outputs = Collections.singletonList(outputConfig);
         int sessionType = highSpeed ? SessionConfiguration.SESSION_HIGH_SPEED : SessionConfiguration.SESSION_REGULAR;
@@ -309,8 +314,9 @@ public class CameraCapture extends SurfaceCapture {
                 }
 
                 CameraManager cameraManager = ServiceManager.getCameraManager();
+                CameraCharacteristics characteristics = null;
                 try {
-                    CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
+                    characteristics = cameraManager.getCameraCharacteristics(cameraId);
                     zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
                 } catch (CameraAccessException e) {
                     Ln.w("Could not get camera characteristics");
@@ -320,19 +326,24 @@ public class CameraCapture extends SurfaceCapture {
                     requestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
                     requestBuilder.addTarget(captureSurface);
 
-                    // Manual exposure: disable auto-exposure and set ISO + shutter speed
-                    if (manualIso > 0 && manualExposureNs > 0) {
-                        Ln.i("Applying manual exposure: ISO " + manualIso + ", Shutter " + manualExposureNs + " ns");
-                        requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-                        requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, manualIso);
-                        requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualExposureNs);
-                    }
+                    if (characteristics != null) {
+                        if (cameraControls == null) {
+                            cameraControls = new CameraControls(characteristics, cameraId, options);
+                        }
+                        cameraControls.attach(requestBuilder, new CameraControls.Requests() {
+                            @Override
+                            public void repeat(CaptureRequest request) throws CameraAccessException {
+                                setRepeatingRequest(session, request);
+                            }
 
-                    // Lock auto white balance
-                    if (awbLock) {
-                        Ln.i("Locking auto white balance");
-                        requestBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, true);
+                            @Override
+                            public void capture(CaptureRequest request) throws CameraAccessException {
+                                session.capture(request, null, cameraHandler);
+                            }
+                        });
                     }
+                    positionMapper = sessionMapper;
+                    meteringCaptureSize = sessionCaptureSize;
 
                     if (fps > 0) {
                         requestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(fps, fps));
@@ -350,7 +361,7 @@ public class CameraCapture extends SurfaceCapture {
                     CaptureRequest request = requestBuilder.build();
                     setRepeatingRequest(session, request);
                     currentSession = session;
-                } catch (CameraAccessException e) {
+                } catch (CameraAccessException | IllegalArgumentException | IllegalStateException e) {
                     Ln.e("Camera error", e);
                     disconnected.set(true);
                     getCaptureControl().reset(CaptureControl.RESET_REASON_TERMINATED);
@@ -470,6 +481,13 @@ public class CameraCapture extends SurfaceCapture {
             }
 
             @Override
+            public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
+                if (session == currentSession && cameraControls != null) {
+                    cameraControls.onResult(result);
+                }
+            }
+
+            @Override
             public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
                 Ln.w("Camera capture failed: frame " + failure.getFrameNumber());
             }
@@ -487,6 +505,27 @@ public class CameraCapture extends SurfaceCapture {
     @Override
     public boolean isClosed() {
         return disconnected.get();
+    }
+
+    public void control(int command, int value) {
+        cameraHandler.post(() -> {
+            assertCameraThread();
+            if (currentSession != null && cameraControls != null) {
+                cameraControls.control(command, value);
+            }
+        });
+    }
+
+    public void meter(boolean exposure, Position position) {
+        cameraHandler.post(() -> {
+            assertCameraThread();
+            if (currentSession != null && cameraControls != null && positionMapper != null) {
+                Point point = positionMapper.map(position);
+                if (point != null) {
+                    cameraControls.meter(exposure, point, meteringCaptureSize);
+                }
+            }
+        });
     }
 
     public void setTorchEnabled(boolean enabled) {

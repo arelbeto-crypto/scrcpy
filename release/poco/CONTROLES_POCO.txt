@@ -1,16 +1,15 @@
-POCO V5 RUNTIME CONTROLS - CONTROLES EN VIVO
+POCO V6 NATIVE FILTERS - CONTROLES EN VIVO
 
-Base: V4 Pro Tools + atajos runtime para los controles avanzados que ya estaban definidos en el servidor.
-El dump real del telefono reporto 6 dispositivos de camara en HAL y 2 camaras normales publicas para API1.
-Modos recomendados:
+Base: V5 Runtime Controls + filtros nativos tipo Snap, sin AR pesado.
+Objetivo: cambios visuales rapidos para live camera, manteniendo baja latencia.
 
-- POCO_MENU.bat: centro de control.
-- INICIAR_POCO.bat: abre camera-id=3, camara trasera logica/multicam.
-- INICIAR_POCO_SEGURO_ID0.bat: abre camera-id=0, trasera principal segura.
-- ELEGIR_LENTE.bat: lista IDs disponibles y permite probar otros.
-- DIAGNOSTICO_POCO_COMPLETO.bat: genera logs para depurar camara/ADB/scrcpy.
+IMPORTANTE
+Estos filtros usan CONTROL_EFFECT_MODE de Camera2. No son mascaras AR con cara,
+stickers, tracking facial ni deformaciones tipo Snapchat completo. Son filtros
+nativos del pipeline de la camara: off, mono, sepia, aqua, negativo, posterize,
+solarize, whiteboard y blackboard, segun lo que cada lente reporte disponible.
 
-ARCHIVOS V4/V5
+ARCHIVOS PRINCIPALES
 POCO_MENU.bat
 DIAGNOSTICO_POCO_COMPLETO.bat
 PERFIL_AUTO_ESTABLE.bat
@@ -19,6 +18,7 @@ PERFIL_BAJA_LUZ.bat
 PERFIL_ENFOQUE_FIJO.bat
 PERFIL_CALIDAD_1080P.bat
 REINICIAR_ADB_POCO.bat
+APPLY_V6_FILTER_PATCH.py
 APPLY_V5_RUNTIME_PATCH.py
 
 COMANDOS UTILES CON TU SERIAL WIFI ADB
@@ -43,14 +43,13 @@ Alt + B                          Siguiente balance de blancos disponible
 Alt + Shift + B                  Balance de blancos anterior
 Alt + O                          Activar/desactivar estabilizacion optica OIS
 Alt + Shift + O                  Activar/desactivar estabilizacion electronica EIS
-Alt + T / Alt + Shift + T         Linterna encender / apagar
-Alt + 0                          Enfoque, exposicion y blancos automaticos; EV=0
-Alt + H                          Mostrar capacidades y valores reales en consola
-Alt + I                          Mostrar capacidades y valores reales en consola
+Alt + T / Alt + Shift + T        Linterna encender / apagar
+Alt + 0                          Reset automatico: foco, exposicion, blancos, EV y filtros
+Alt + H / Alt + I                Mostrar capacidades y valores reales en consola
 Alt + R                          Girar la imagen
 F11                              Pantalla completa
 
-ATAJOS NUEVOS V5 RUNTIME
+ATAJOS V5 RUNTIME
 Alt + F                          FPS siguiente compatible
 Alt + Shift + F                  FPS anterior compatible
 Alt + G                          Antibanding siguiente: off/50/60/auto segun soporte
@@ -65,8 +64,27 @@ Alt + P                          Tonemap siguiente
 Alt + Shift + P                  Tonemap anterior
 Alt + C                          Correccion de distorsion siguiente
 Alt + Shift + C                  Correccion de distorsion anterior
-Alt + X                          Efecto de camara siguiente
-Alt + Shift + X                  Efecto de camara anterior
+Alt + X                          Filtro/efecto nativo siguiente
+Alt + Shift + X                  Filtro/efecto nativo anterior
+
+ATAJOS NUEVOS V6 - FILTROS DIRECTOS TIPO SNAP
+Alt + 1                          OFF / sin filtro
+Alt + 2                          MONO / blanco y negro
+Alt + 3                          SEPIA / calido vintage
+Alt + 4                          AQUA / tono frio azul-verde
+Alt + 5                          NEGATIVE / negativo
+Alt + 6                          POSTERIZE / posterizado
+Alt + 7                          SOLARIZE / solarizado
+Alt + 8                          WHITEBOARD / alto contraste claro
+Alt + 9                          BLACKBOARD / alto contraste oscuro
+
+USO RECOMENDADO EN LIVE
+1. Abre INICIAR_POCO.bat o POCO_MENU.bat.
+2. Pulsa Alt+I para ver en consola los filtros disponibles.
+3. Prueba Alt+3, Alt+4 y Alt+2 primero: suelen ser los mas utiles visualmente.
+4. Si la consola dice "Filtro no disponible", esa lente no expone ese efecto.
+5. Alt+1 quita el filtro sin reiniciar la camara.
+6. Alt+0 hace reset general.
 
 PUNTOS INDEPENDIENTES
 Clic izquierdo                   Enfocar esa zona; mantiene la exposicion.
@@ -139,13 +157,22 @@ indica la lente fisica activa si el telefono proporciona ese dato.
 physical-ids muestra sensores agrupados: no significa que se puedan abrir
 directamente. El selector solo ofrece IDs publicos que Camera2 enumera.
 
-SIGUIENTE BLOQUE EXPERIMENTAL
-La base V5 deja listo el control runtime. La siguiente etapa puede ser:
+LIMITES DE ESTA V6
+- No hace tracking facial.
+- No pone orejas, lentes, stickers ni mascaras 3D.
+- No deforma la cara.
+- No usa IA.
+- No requiere root.
+- Es la opcion rapida y estable para filtros de color en vivo.
+
+SIGUIENTE BLOQUE EXPERIMENTAL POSIBLE
+La etapa despues de V6 podria ser:
 - HUD visual;
 - zebra/focus peaking/histograma;
+- LUT/shader en el cliente Windows;
+- deteccion facial simple;
 - panel web local;
-- prueba automatica de combinaciones multicamara;
 - app Android companera.
 
-Esta version usa scrcpy 4.1-poco5 en cliente y servidor. No mezcles sus archivos
-con V1/V2/V3/V4 u otras versiones. No requiere root.
+Esta version usa scrcpy 4.1-poco6 en cliente y servidor. No mezcles sus archivos
+con V1/V2/V3/V4/V5 u otras versiones. No requiere root.

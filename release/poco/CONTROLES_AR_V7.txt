@@ -59,3 +59,4 @@ LIMITES
 El AR overlay se dibuja fijo sobre la zona central de la ventana. Si la persona se mueve mucho, el overlay no la sigue. La etapa posterior seria agregar tracking facial simple del lado cliente o una app Android companera, pero eso ya aumenta complejidad y consumo.
 
 Esta version usa scrcpy 4.1-poco7. No mezcles sus archivos con V1/V2/V3/V4/V5/V6.
+Build trigger: V7 AR workflow.

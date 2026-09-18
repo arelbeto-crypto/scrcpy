@@ -1,12 +1,12 @@
-name: POCO Live Camera Controls V5
+name: POCO Live Camera Filters V6
 
 on:
   push:
-    branches: [camera-controls-poco-v5]
+    branches: [camera-filters-poco-v6]
   workflow_dispatch:
 
 env:
-  VERSION: camera-controls-poco-v5
+  VERSION: camera-filters-poco-v6
 
 jobs:
   build-server:
@@ -15,6 +15,8 @@ jobs:
       GRADLE: gradle
     steps:
       - uses: actions/checkout@v6
+      - name: Apply POCO V6 native filter patch
+        run: python3 release/poco/APPLY_V6_FILTER_PATCH.py
       - uses: actions/setup-java@v5
         with:
           distribution: zulu
@@ -24,15 +26,15 @@ jobs:
         run: release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-server-camera-v5
+          name: scrcpy-server-camera-v6
           path: release/work/build-server/server/scrcpy-server
 
   build-win64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Apply POCO V5 runtime shortcut patch
-        run: python3 release/poco/APPLY_V5_RUNTIME_PATCH.py
+      - name: Apply POCO V6 native filter patch
+        run: python3 release/poco/APPLY_V6_FILTER_PATCH.py
       - name: Install dependencies
         run: |
           sudo apt update
@@ -50,7 +52,7 @@ jobs:
           tar -C . -cvf dist-tar/dist.tar.gz dist/
       - uses: actions/upload-artifact@v7
         with:
-          name: build-win64-camera-v5
+          name: build-win64-camera-v6
           path: release/work/build-win64/dist-tar/
 
   package-win64:
@@ -60,11 +62,11 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-server-camera-v5
+          name: scrcpy-server-camera-v6
           path: release/work/build-server/server/
       - uses: actions/download-artifact@v8
         with:
-          name: build-win64-camera-v5
+          name: build-win64-camera-v6
           path: release/work/build-win64/dist-tar/
       - name: Assemble portable Windows package
         run: |
@@ -72,19 +74,19 @@ jobs:
           tar xf dist-tar/dist.tar.gz
           cd ../../..
           cp release/poco/* release/work/build-win64/dist/
-          printf '%s\n' "Commit: $GITHUB_SHA" "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "Package: scrcpy-camera-controls-poco-v5-win64" "Runtime patch: release/poco/APPLY_V5_RUNTIME_PATCH.py" > release/work/build-win64/dist/BUILD_INFO.txt
+          printf '%s\n' "Commit: $GITHUB_SHA" "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "Package: scrcpy-camera-filters-poco-v6-win64" "Runtime patch: release/poco/APPLY_V6_FILTER_PATCH.py" > release/work/build-win64/dist/BUILD_INFO.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-controls-poco-v5-win64
+          name: scrcpy-camera-filters-poco-v6-win64
           path: release/output/
 
   test-client:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Apply POCO V5 runtime shortcut patch
-        run: python3 release/poco/APPLY_V5_RUNTIME_PATCH.py
+      - name: Apply POCO V6 native filter patch
+        run: python3 release/poco/APPLY_V6_FILTER_PATCH.py
       - name: Install native test dependencies
         run: |
           sudo apt update
@@ -107,7 +109,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-camera-controls-poco-v5-win64
+          name: scrcpy-camera-filters-poco-v6-win64
           path: package
       - name: Check portable executable and POCO tools
         shell: pwsh
@@ -116,7 +118,7 @@ jobs:
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath unpacked
           $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
           $version = & $exe.FullName --version 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco5') { throw "scrcpy failed to start: $version" }
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco6') { throw "scrcpy failed to start: $version" }
           $help = & $exe.FullName --help 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $help -notmatch 'camera-focus-distance') { throw 'Camera options missing' }
           $tokens = $null
@@ -127,10 +129,10 @@ jobs:
             $null = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
             if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
           }
-          foreach ($fileName in @('POCO_MENU.bat', 'DIAGNOSTICO_POCO_COMPLETO.bat', 'PERFIL_LIVE_ESTABLE.bat', 'APPLY_V5_RUNTIME_PATCH.py', 'CONTROLES_POCO.txt')) {
+          foreach ($fileName in @('POCO_MENU.bat', 'DIAGNOSTICO_POCO_COMPLETO.bat', 'PERFIL_LIVE_ESTABLE.bat', 'APPLY_V6_FILTER_PATCH.py', 'CONTROLES_POCO.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $exe.DirectoryName $fileName))) { throw "$fileName missing" }
           }
           $manual = Get-Content -LiteralPath (Join-Path $exe.DirectoryName 'CONTROLES_POCO.txt') -Raw
-          if ($manual -notmatch 'Alt \+ F' -or $manual -notmatch 'Alt \+ N') { throw 'V5 runtime shortcuts missing from manual' }
+          if ($manual -notmatch 'Alt \+ 1\.\.9' -or $manual -notmatch 'SEPIA' -or $manual -notmatch 'AQUA') { throw 'V6 native filter shortcuts missing from manual' }
           Write-Host $version
-          Write-Host 'Portable Windows executable, runtime shortcuts, POCO menu, diagnostics and presets verified.'
+          Write-Host 'Portable Windows executable, native filters, POCO menu, diagnostics and presets verified.'

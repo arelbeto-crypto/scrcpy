@@ -1,0 +1,61 @@
+POCO V7 AR FILTERS - OVERLAYS EN VIVO
+
+Base: V6 filtros nativos Camera2 + AR overlay 2D del lado cliente.
+Objetivo: agregar filtros tipo Snap ligeros sin meter IA pesada, sin root y sin subir latencia al telefono.
+
+IMPORTANTE
+Estos AR filters NO son Snapchat completo todavia:
+- no hacen tracking facial real;
+- no usan IA;
+- no deforman cara en 3D;
+- no ponen mascara 3D pegada al rostro;
+- no requieren root;
+- se renderizan en la ventana de scrcpy encima del video.
+
+La ventaja es que consumen poco y no rompen los controles de camara. Funcionan mejor si la cara esta centrada en la toma.
+
+ATAJOS AR V7
+Alt + Y                          Siguiente overlay AR
+Alt + Shift + Y                  Overlay AR anterior
+Alt + Shift + 1                  AR OFF / sin overlay
+Alt + Shift + 2                  GLASSES / lentes
+Alt + Shift + 3                  MUSTACHE / bigote
+Alt + Shift + 4                  MASK / mascara 2D sobre ojos
+Alt + Shift + 5                  HALO / aro superior
+Alt + Shift + 6                  BLUSH / mejillas
+Alt + Shift + 7                  HEARTS / corazones
+Alt + Shift + 8                  NEON / marco neon
+Alt + Shift + 9                  CROWN / corona
+
+FILTROS NATIVOS V6 QUE SE MANTIENEN
+Alt + 1                          OFF / sin filtro Camera2
+Alt + 2                          MONO / blanco y negro
+Alt + 3                          SEPIA / vintage
+Alt + 4                          AQUA / tono frio
+Alt + 5                          NEGATIVE / negativo
+Alt + 6                          POSTERIZE / posterizado
+Alt + 7                          SOLARIZE / solarizado
+Alt + 8                          WHITEBOARD / alto contraste claro
+Alt + 9                          BLACKBOARD / alto contraste oscuro
+Alt + X                          Siguiente filtro Camera2
+Alt + Shift + X                  Filtro Camera2 anterior
+
+USO RECOMENDADO
+1. Abre POCO_MENU.bat o INICIAR_POCO.bat.
+2. Prueba primero Alt+Y para recorrer overlays AR.
+3. Usa Alt+Shift+2 para lentes, Alt+Shift+5 para halo o Alt+Shift+9 para corona.
+4. Combina con filtros nativos: por ejemplo Alt+3 para sepia + Alt+Shift+9 para corona.
+5. Usa Alt+Shift+1 para quitar solo el overlay AR.
+6. Usa Alt+1 para quitar solo el filtro nativo Camera2.
+7. Usa Alt+0 para reset general de camara y filtros nativos.
+
+COMBINACIONES UTILES
+- Sepia + corona: Alt+3, luego Alt+Shift+9.
+- Aqua + lentes: Alt+4, luego Alt+Shift+2.
+- Blanco y negro + neon: Alt+2, luego Alt+Shift+8.
+- Normal + corazones: Alt+1, luego Alt+Shift+7.
+
+LIMITES
+El AR overlay se dibuja fijo sobre la zona central de la ventana. Si la persona se mueve mucho, el overlay no la sigue. La etapa posterior seria agregar tracking facial simple del lado cliente o una app Android companera, pero eso ya aumenta complejidad y consumo.
+
+Esta version usa scrcpy 4.1-poco7. No mezcles sus archivos con V1/V2/V3/V4/V5/V6.

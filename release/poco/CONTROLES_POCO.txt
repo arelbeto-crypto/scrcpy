@@ -1,16 +1,31 @@
-POCO V3 - CONTROLES EN VIVO
+POCO V4 PRO TOOLS - CONTROLES EN VIVO
 
-Base tomada del dump real camera_dump_poco.txt del POCO/Redmi del usuario.
-El telefono reporto 6 dispositivos de camara en HAL y 2 camaras normales publicas para API1.
-Para este equipo, los modos recomendados son:
+Base: V3 + herramientas de uso real para el POCO/Redmi del usuario.
+El dump real del telefono reporto 6 dispositivos de camara en HAL y 2 camaras normales publicas para API1.
+Modos recomendados:
 
+- POCO_MENU.bat: centro de control de la V4.
 - INICIAR_POCO.bat: abre camera-id=3, camara trasera logica/multicam.
 - INICIAR_POCO_SEGURO_ID0.bat: abre camera-id=0, trasera principal segura.
 - ELEGIR_LENTE.bat: lista IDs disponibles y permite probar otros.
+- DIAGNOSTICO_POCO_COMPLETO.bat: genera logs para depurar camara/ADB/scrcpy.
 
-Extrae la carpeta completa. Abre INICIAR_POCO.bat.
-Haz clic en la ventana de la camara para que reciba el teclado.
-F1 abre esta ayuda resumida. No necesitas editar codigo ni reiniciar para ajustar.
+ARCHIVOS NUEVOS V4
+POCO_MENU.bat
+DIAGNOSTICO_POCO_COMPLETO.bat
+PERFIL_AUTO_ESTABLE.bat
+PERFIL_LIVE_ESTABLE.bat
+PERFIL_BAJA_LUZ.bat
+PERFIL_ENFOQUE_FIJO.bat
+PERFIL_CALIDAD_1080P.bat
+REINICIAR_ADB_POCO.bat
+
+COMANDOS UTILES CON TU SERIAL WIFI ADB
+adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" devices
+adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.product.model
+adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.product.device
+adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.build.version.sdk
+adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell dumpsys media.camera > camera_dump_poco.txt
 
 ATAJOS (ALT IZQUIERDO)
 Alt + Arriba / Abajo             Zoom acercar / alejar
@@ -39,6 +54,27 @@ Shift + clic izquierdo           Medir luz en esa zona; mantiene el enfoque.
 Tras enfocar con clic, el foco queda en modo AF puntual. Alt+A vuelve al continuo.
 El punto AE vuelve a exposicion automatica y desbloquea AE, si estaba bloqueado.
 
+PERFILES
+PERFIL_AUTO_ESTABLE.bat
+- camera-id=3, 30 FPS, automatico.
+- Uso: abrir rapido sin tocar demasiado.
+
+PERFIL_LIVE_ESTABLE.bat
+- camera-id=3, 30 FPS, EIS si la camara lo acepta.
+- Uso: live/performance con menos vibracion.
+
+PERFIL_BAJA_LUZ.bat
+- camera-id=0, ISO 800, 1/30s, 30 FPS.
+- Uso: cuarto oscuro o escenario. Puede meter ruido; ajusta ISO con Alt+Shift+Izq/Der.
+
+PERFIL_ENFOQUE_FIJO.bat
+- camera-id=0, foco inicial 2.0D.
+- Uso: evitar respiracion de autofocus cuando la distancia es fija.
+
+PERFIL_CALIDAD_1080P.bat
+- camera-id=3, 1920x1080, H264 16M, ventana POCO_CAM_LIVE sin bordes y always-on-top.
+- Uso: capturar la ventana desde otro programa usando siempre el mismo nombre.
+
 DATOS REALES DEL POCO SEGUN EL DUMP
 ID 0: trasera principal, flash, OIS, EIS, zoom 1.0..10.0, ISO manual, exposicion manual,
       AE-lock, AWB-lock, regiones AF/AE y procesamiento manual.
@@ -47,12 +83,15 @@ ID 2: trasera secundaria, flash, foco fijo, EIS, zoom 1.0..10.0.
 ID 3: trasera logica/multicam, flash, OIS, EIS, zoom 1.0..10.0, LOGICAL_MULTI_CAMERA.
 IDs 4/5: aparecen en HAL, pero no se usan como default.
 
-COMANDOS UTILES CON TU SERIAL WIFI ADB
-adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" devices
-adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.product.model
-adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.product.device
-adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell getprop ro.build.version.sdk
-adb -s "adb-a7664a5-oGHxQd._adb-tls-connect._tcp" shell dumpsys media.camera > camera_dump_poco.txt
+DIAGNOSTICO
+DIAGNOSTICO_POCO_COMPLETO.bat genera logs/diagnostico_poco_FECHA.txt con:
+- adb devices -l
+- modelo, device, SDK, release y fingerprint
+- scrcpy --version
+- scrcpy --list-cameras
+- scrcpy --list-camera-sizes
+- dumpsys media.camera
+- procesos de camara
 
 COMPORTAMIENTO
 Los valores solicitados aparecen en la consola al cambiar un ajuste.
@@ -80,6 +119,14 @@ indica la lente fisica activa si el telefono proporciona ese dato.
 physical-ids muestra sensores agrupados: no significa que se puedan abrir
 directamente. El selector solo ofrece IDs publicos que Camera2 enumera.
 
-Esta version usa scrcpy 4.1-poco3 en cliente y servidor. No mezcles sus archivos
-con la V1/V2 u otras versiones. No requiere root. La validacion final de imagen,
-lentes simultaneas y controles requiere el POCO fisico.
+SIGUIENTE BLOQUE EXPERIMENTAL
+La base V4 deja listo el paquete operativo. La siguiente etapa puede ser:
+- atajos runtime para AF mode, FPS, antibanding, NR, edge, tonemap, distortion y effects;
+- HUD visual;
+- zebra/focus peaking/histograma;
+- panel web local;
+- prueba automatica de combinaciones multicamara;
+- app Android companera.
+
+Esta version usa scrcpy 4.1-poco4 en cliente y servidor. No mezcles sus archivos
+con V1/V2/V3 u otras versiones. No requiere root.

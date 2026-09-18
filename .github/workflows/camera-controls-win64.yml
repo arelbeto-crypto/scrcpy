@@ -1,12 +1,12 @@
-name: POCO Live Camera Controls V3
+name: POCO Live Camera Controls V4
 
 on:
   push:
-    branches: [camera-controls-poco-v3]
+    branches: [camera-controls-poco-v4]
   workflow_dispatch:
 
 env:
-  VERSION: camera-controls-poco-v3
+  VERSION: camera-controls-poco-v4
 
 jobs:
   build-server:
@@ -24,7 +24,7 @@ jobs:
         run: release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-server-camera-v3
+          name: scrcpy-server-camera-v4
           path: release/work/build-server/server/scrcpy-server
 
   build-win64:
@@ -48,7 +48,7 @@ jobs:
           tar -C . -cvf dist-tar/dist.tar.gz dist/
       - uses: actions/upload-artifact@v7
         with:
-          name: build-win64-camera-v3
+          name: build-win64-camera-v4
           path: release/work/build-win64/dist-tar/
 
   package-win64:
@@ -58,11 +58,11 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-server-camera-v3
+          name: scrcpy-server-camera-v4
           path: release/work/build-server/server/
       - uses: actions/download-artifact@v8
         with:
-          name: build-win64-camera-v3
+          name: build-win64-camera-v4
           path: release/work/build-win64/dist-tar/
       - name: Assemble portable Windows package
         run: |
@@ -70,11 +70,11 @@ jobs:
           tar xf dist-tar/dist.tar.gz
           cd ../../..
           cp release/poco/* release/work/build-win64/dist/
-          printf '%s\n' "Commit: $GITHUB_SHA" "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > release/work/build-win64/dist/BUILD_INFO.txt
+          printf '%s\n' "Commit: $GITHUB_SHA" "Workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "Package: scrcpy-camera-controls-poco-v4-win64" > release/work/build-win64/dist/BUILD_INFO.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-controls-poco-v3-win64
+          name: scrcpy-camera-controls-poco-v4-win64
           path: release/output/
 
   test-client:
@@ -103,22 +103,28 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-camera-controls-poco-v3-win64
+          name: scrcpy-camera-controls-poco-v4-win64
           path: package
-      - name: Check portable executable and lens selector
+      - name: Check portable executable and POCO tools
         shell: pwsh
         run: |
           $archive = Get-ChildItem package -Filter *.zip | Select-Object -First 1
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath unpacked
           $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
           $version = & $exe.FullName --version 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco3') { throw "scrcpy failed to start: $version" }
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco4') { throw "scrcpy failed to start: $version" }
           $help = & $exe.FullName --help 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $help -notmatch 'camera-focus-distance') { throw 'Camera options missing' }
           $tokens = $null
           $parseErrors = $null
-          $selector = Join-Path $exe.DirectoryName 'ELEGIR_LENTE.ps1'
-          $null = [System.Management.Automation.Language.Parser]::ParseFile($selector, [ref]$tokens, [ref]$parseErrors)
-          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          foreach ($scriptName in @('ELEGIR_LENTE.ps1', 'POCO_MENU.ps1', 'DIAGNOSTICO_POCO_COMPLETO.ps1')) {
+            $scriptPath = Join-Path $exe.DirectoryName $scriptName
+            if (-not (Test-Path -LiteralPath $scriptPath)) { throw "$scriptName missing" }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+          foreach ($batName in @('POCO_MENU.bat', 'DIAGNOSTICO_POCO_COMPLETO.bat', 'PERFIL_LIVE_ESTABLE.bat')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $exe.DirectoryName $batName))) { throw "$batName missing" }
+          }
           Write-Host $version
-          Write-Host 'Portable Windows executable and PowerShell selector verified.'
+          Write-Host 'Portable Windows executable, POCO menu, diagnostics and presets verified.'

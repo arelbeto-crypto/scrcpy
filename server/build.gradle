@@ -7,8 +7,8 @@ android {
         applicationId = "com.genymobile.scrcpy"
         minSdkVersion 21
         targetSdkVersion 36
-        versionCode 40101
-        versionName "4.1-poco3"
+        versionCode 40102
+        versionName "4.1-poco4"
         testInstrumentationRunner = "android.support.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

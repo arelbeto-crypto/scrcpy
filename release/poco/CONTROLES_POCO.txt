@@ -68,6 +68,7 @@ Alt + X                          Filtro/efecto nativo siguiente
 Alt + Shift + X                  Filtro/efecto nativo anterior
 
 ATAJOS NUEVOS V6 - FILTROS DIRECTOS TIPO SNAP
+Alt + 1..9                       Filtros directos: off/mono/sepia/aqua/negative/posterize/solarize/whiteboard/blackboard
 Alt + 1                          OFF / sin filtro
 Alt + 2                          MONO / blanco y negro
 Alt + 3                          SEPIA / calido vintage

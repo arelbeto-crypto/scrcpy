@@ -36,6 +36,14 @@ public final class CameraControls {
     public static final int AWB_MODE = 11;
     public static final int RESET_AUTO = 12;
     public static final int INFO = 13;
+    public static final int AF_MODE = 14;
+    public static final int FPS = 15;
+    public static final int ANTIBANDING = 16;
+    public static final int NOISE_REDUCTION = 17;
+    public static final int EDGE = 18;
+    public static final int TONEMAP = 19;
+    public static final int DISTORTION = 20;
+    public static final int EFFECT = 21;
 
     public interface Requests {
         void repeat(CaptureRequest request) throws CameraAccessException;
@@ -46,7 +54,7 @@ public final class CameraControls {
     private final List<CaptureRequest.Key<?>> keys;
     private final String cameraId;
     private final boolean highSpeed;
-    private final int fps;
+    private final int initialFps;
     private State state;
     private CaptureRequest.Builder builder;
     private Requests requests;
@@ -65,6 +73,13 @@ public final class CameraControls {
         int afMode;
         int ev;
         int awbMode;
+        int fps;
+        int antibandingMode;
+        int noiseReductionMode = -1;
+        int edgeMode = -1;
+        int tonemapMode = -1;
+        int distortionMode = -1;
+        int effectMode;
         boolean aeLock;
         boolean awbLock;
         boolean ois;
@@ -86,10 +101,15 @@ public final class CameraControls {
         this.keys = characteristics.getAvailableCaptureRequestKeys();
         this.cameraId = cameraId;
         this.highSpeed = options.getCameraHighSpeed();
-        this.fps = options.getCameraFps();
+        this.initialFps = options.getCameraFps();
         state = new State();
         state.afMode = autoFocusMode();
         state.awbMode = CaptureRequest.CONTROL_AWB_MODE_AUTO;
+        state.fps = initialFps;
+        state.antibandingMode = firstSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES),
+                CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_OFF);
+        state.effectMode = firstSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_EFFECTS),
+                CaptureRequest.CONTROL_EFFECT_MODE_OFF, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
         if (manualSensor() && options.getCameraIso() > 0 && options.getCameraExposure() > 0) {
             state.iso = isoRange().clamp(options.getCameraIso());
             state.exposure = exposureRange().clamp(options.getCameraExposure());
@@ -117,7 +137,7 @@ public final class CameraControls {
             apply(state);
         }
         printCapabilities();
-        Ln.i("Controles en vivo: F1 muestra los atajos; Alt+H muestra valores. Clic=AF; Shift+clic=AE.");
+        Ln.i("POCO V3: F1 muestra atajos; Alt+H muestra valores/capacidades. Clic=AF; Shift+clic=AE.");
     }
 
     public void onResult(TotalCaptureResult result) {
@@ -162,6 +182,28 @@ public final class CameraControls {
             }
         }
         return false;
+    }
+
+    private static int firstSupportedMode(int[] modes, int preferred, int fallback) {
+        if (contains(modes, preferred)) {
+            return preferred;
+        }
+        return contains(modes, fallback) ? fallback : (modes != null && modes.length > 0 ? modes[0] : fallback);
+    }
+
+    private static int nextMode(int[] modes, int current, int direction, int fallback) {
+        if (modes == null || modes.length == 0) {
+            return fallback;
+        }
+        int index = 0;
+        for (int i = 0; i < modes.length; ++i) {
+            if (modes[i] == current) {
+                index = i;
+                break;
+            }
+        }
+        int step = direction < 0 ? modes.length - 1 : 1;
+        return modes[(index + step) % modes.length];
     }
 
     private int autoFocusMode() {
@@ -221,6 +263,52 @@ public final class CameraControls {
                 CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
     }
 
+    private boolean supports(CaptureRequest.Key<Integer> key, int[] modes) {
+        return has(key) && modes != null && modes.length > 0;
+    }
+
+    private Range<Integer> targetFpsRange(int value) {
+        if (value <= 0 || !has(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE)) {
+            return null;
+        }
+        Range<Integer>[] ranges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+        if (ranges == null) {
+            return new Range<>(value, value);
+        }
+        Range<Integer> best = null;
+        for (Range<Integer> range : ranges) {
+            if (range.getLower() == value && range.getUpper() == value) {
+                return range;
+            }
+            if (range.getLower() <= value && range.getUpper() >= value) {
+                if (best == null || (range.getUpper() - range.getLower()) < (best.getUpper() - best.getLower())) {
+                    best = range;
+                }
+            }
+        }
+        return best;
+    }
+
+    private int nextFps(int current, int direction) {
+        int[] candidates = {0, 24, 30, 60, 120, 240};
+        int index = 0;
+        for (int i = 0; i < candidates.length; ++i) {
+            if (candidates[i] == current) {
+                index = i;
+                break;
+            }
+        }
+        int step = direction < 0 ? candidates.length - 1 : 1;
+        for (int i = 0; i < candidates.length; ++i) {
+            index = (index + step) % candidates.length;
+            int candidate = candidates[index];
+            if (candidate == 0 || targetFpsRange(candidate) != null) {
+                return candidate;
+            }
+        }
+        return current;
+    }
+
     private void apply(State next) {
         set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         if (has(CaptureRequest.SCALER_ROTATE_AND_CROP) && contains(characteristics.get(
@@ -228,6 +316,8 @@ public final class CameraControls {
             set(CaptureRequest.SCALER_ROTATE_AND_CROP, CaptureRequest.SCALER_ROTATE_AND_CROP_NONE);
         }
         set(CaptureRequest.CONTROL_AE_MODE, next.iso > 0 ? CaptureRequest.CONTROL_AE_MODE_OFF : CaptureRequest.CONTROL_AE_MODE_ON);
+        set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, next.antibandingMode);
+        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, targetFpsRange(next.fps));
         if (aeLockAvailable()) {
             set(CaptureRequest.CONTROL_AE_LOCK, next.iso == 0 && next.aeLock);
         }
@@ -236,7 +326,7 @@ public final class CameraControls {
         set(CaptureRequest.SENSOR_EXPOSURE_TIME, next.iso > 0 ? next.exposure : null);
         Long frameDuration = null;
         if (next.iso > 0) {
-            long base = fps > 0 ? 1_000_000_000L / fps : measuredFrameDuration;
+            long base = next.fps > 0 ? 1_000_000_000L / next.fps : measuredFrameDuration;
             if (base <= 0) {
                 base = 33_333_333L;
             }
@@ -264,6 +354,21 @@ public final class CameraControls {
             set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, next.eis ? CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON
                     : CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
         }
+        if (next.noiseReductionMode >= 0 && contains(characteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES), next.noiseReductionMode)) {
+            set(CaptureRequest.NOISE_REDUCTION_MODE, next.noiseReductionMode);
+        }
+        if (next.edgeMode >= 0 && contains(characteristics.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES), next.edgeMode)) {
+            set(CaptureRequest.EDGE_MODE, next.edgeMode);
+        }
+        if (next.tonemapMode >= 0 && contains(characteristics.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES), next.tonemapMode)) {
+            set(CaptureRequest.TONEMAP_MODE, next.tonemapMode);
+        }
+        if (next.distortionMode >= 0 && contains(characteristics.get(CameraCharacteristics.DISTORTION_CORRECTION_AVAILABLE_MODES), next.distortionMode)) {
+            set(CaptureRequest.DISTORTION_CORRECTION_MODE, next.distortionMode);
+        }
+        if (contains(characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_EFFECTS), next.effectMode)) {
+            set(CaptureRequest.CONTROL_EFFECT_MODE, next.effectMode);
+        }
     }
 
     private void commit(State next, boolean startAf, boolean cancelAf) {
@@ -280,7 +385,6 @@ public final class CameraControls {
                 try {
                     requests.capture(builder.build());
                 } finally {
-                    // Triggers must never be left active in a repeating request.
                     builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                 }
             }
@@ -315,7 +419,6 @@ public final class CameraControls {
                 Ln.w("Espera a recibir imagen antes de ajustar ISO/obturacion");
                 return false;
             }
-            // Freeze the other exposure parameter at the last measured value.
             next.iso = isoRange().clamp(measuredIso);
             next.exposure = exposureRange().clamp(measuredExposure);
         }
@@ -333,7 +436,8 @@ public final class CameraControls {
         if (command == INFO) {
             printCapabilities();
             printState();
-            Ln.i("Ultima medicion del sensor: ISO=" + measuredIso + ", obturacion=" + measuredExposure + " ns, foco=" + measuredFocus + " D");
+            Ln.i("Ultima medicion del sensor: ISO=" + measuredIso + ", obturacion=" + measuredExposure + " ns, foco=" + measuredFocus + " D"
+                    + ", frameDuration=" + measuredFrameDuration + " ns, crop=" + measuredCrop + ", distortion=" + measuredDistortion);
             return;
         }
         if (!ready() || value < -1 || value > 1) {
@@ -423,26 +527,82 @@ public final class CameraControls {
                 }
                 break;
             case AWB_MODE:
-                int[] modes = characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
-                if (modes == null || !has(CaptureRequest.CONTROL_AWB_MODE)) {
+                int[] awbModes = characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
+                if (awbModes == null || !has(CaptureRequest.CONTROL_AWB_MODE)) {
                     Ln.w("Modos de balance de blancos no disponibles");
                     return;
                 }
-                int index = 0;
-                for (int i = 0; i < modes.length; ++i) {
-                    if (modes[i] == next.awbMode) {
-                        index = i;
-                        break;
-                    }
-                }
-                for (int i = 0; i < modes.length; ++i) {
-                    index = (index + (value < 0 ? modes.length - 1 : 1)) % modes.length;
-                    if (modes[index] != CaptureRequest.CONTROL_AWB_MODE_OFF) {
-                        next.awbMode = modes[index];
-                        break;
-                    }
-                }
+                do {
+                    next.awbMode = nextMode(awbModes, next.awbMode, value, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+                } while (next.awbMode == CaptureRequest.CONTROL_AWB_MODE_OFF && awbModes.length > 1);
                 next.awbLock = false;
+                break;
+            case AF_MODE:
+                int[] afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+                if (afModes == null || !has(CaptureRequest.CONTROL_AF_MODE)) {
+                    Ln.w("Modos AF no disponibles");
+                    return;
+                }
+                next.focus = -1;
+                next.afMode = nextMode(afModes, next.afMode, value, autoFocusMode());
+                next.afRegions = null;
+                cancelAf = true;
+                startAf = next.afMode == CaptureRequest.CONTROL_AF_MODE_AUTO;
+                break;
+            case FPS:
+                next.fps = nextFps(next.fps, value);
+                if (next.fps == state.fps) {
+                    Ln.w("No hay otro FPS compatible para esta sesion");
+                    return;
+                }
+                break;
+            case ANTIBANDING:
+                int[] antibanding = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES);
+                if (!supports(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, antibanding)) {
+                    Ln.w("Antibanding no disponible");
+                    return;
+                }
+                next.antibandingMode = nextMode(antibanding, next.antibandingMode, value, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO);
+                break;
+            case NOISE_REDUCTION:
+                int[] noise = characteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
+                if (!supports(CaptureRequest.NOISE_REDUCTION_MODE, noise)) {
+                    Ln.w("Reduccion de ruido no disponible");
+                    return;
+                }
+                next.noiseReductionMode = nextMode(noise, next.noiseReductionMode, value, noise[0]);
+                break;
+            case EDGE:
+                int[] edge = characteristics.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES);
+                if (!supports(CaptureRequest.EDGE_MODE, edge)) {
+                    Ln.w("Edge/nitidez no disponible");
+                    return;
+                }
+                next.edgeMode = nextMode(edge, next.edgeMode, value, edge[0]);
+                break;
+            case TONEMAP:
+                int[] tonemap = characteristics.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES);
+                if (!supports(CaptureRequest.TONEMAP_MODE, tonemap)) {
+                    Ln.w("Tonemap no disponible");
+                    return;
+                }
+                next.tonemapMode = nextMode(tonemap, next.tonemapMode, value, tonemap[0]);
+                break;
+            case DISTORTION:
+                int[] distortion = characteristics.get(CameraCharacteristics.DISTORTION_CORRECTION_AVAILABLE_MODES);
+                if (!supports(CaptureRequest.DISTORTION_CORRECTION_MODE, distortion)) {
+                    Ln.w("Correccion de distorsion no disponible");
+                    return;
+                }
+                next.distortionMode = nextMode(distortion, next.distortionMode, value, distortion[0]);
+                break;
+            case EFFECT:
+                int[] effects = characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_EFFECTS);
+                if (!supports(CaptureRequest.CONTROL_EFFECT_MODE, effects)) {
+                    Ln.w("Efectos de camara no disponibles");
+                    return;
+                }
+                next.effectMode = nextMode(effects, next.effectMode, value, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
                 break;
             case RESET_AUTO:
                 automaticExposure(next);
@@ -453,6 +613,15 @@ public final class CameraControls {
                 next.awbLock = false;
                 next.afRegions = null;
                 next.aeRegions = null;
+                next.fps = initialFps;
+                next.antibandingMode = firstSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES),
+                        CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_OFF);
+                next.noiseReductionMode = -1;
+                next.edgeMode = -1;
+                next.tonemapMode = -1;
+                next.distortionMode = -1;
+                next.effectMode = firstSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_EFFECTS),
+                        CaptureRequest.CONTROL_EFFECT_MODE_OFF, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
                 startAf = next.afMode == CaptureRequest.CONTROL_AF_MODE_AUTO;
                 cancelAf = true;
                 break;
@@ -502,11 +671,11 @@ public final class CameraControls {
         State next = state.copy();
         if (exposure) {
             automaticExposure(next);
-            next.aeRegions = region; // Leave focus and AF region unchanged.
+            next.aeRegions = region;
         } else {
             next.focus = -1;
             next.afMode = CaptureRequest.CONTROL_AF_MODE_AUTO;
-            next.afRegions = region; // Leave exposure and AE region unchanged.
+            next.afRegions = region;
         }
         Ln.i((exposure ? "Medicion AE" : "Enfoque AF") + " en (" + sensorPoint.getX() + ", " + sensorPoint.getY() + ")");
         commit(next, !exposure, !exposure);
@@ -517,14 +686,27 @@ public final class CameraControls {
         return mode >= 0 && mode < names.length ? names[mode] : Integer.toString(mode);
     }
 
+    private static String afName(int mode) {
+        String[] names = {"OFF/MANUAL", "AUTO", "MACRO", "CONTINUO VIDEO", "CONTINUO FOTO", "EDOF"};
+        return mode >= 0 && mode < names.length ? names[mode] : Integer.toString(mode);
+    }
+
+    private static String modeName(int mode) {
+        return mode < 0 ? "AUTO" : Integer.toString(mode);
+    }
+
     private void printState() {
         Rational step = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
         float ev = step != null ? state.ev * step.floatValue() : 0;
-        String focus = state.focus >= 0 ? String.format(Locale.ROOT, "%.2f D", state.focus) : "AF";
-        String sensor = state.iso > 0 ? String.format(Locale.ROOT, "ISO=%d, obturacion=%.3f ms", state.iso, state.exposure / 1_000_000.0) : "ISO/obturacion=AUTO";
-        Ln.i("Camara " + cameraId + " solicitado: " + sensor + ", foco=" + focus + ", EV=" + ev
-                + ", AE-lock=" + state.aeLock + ", WB=" + whiteBalanceName(state.awbMode) + ", AWB-lock=" + state.awbLock
-                + ", OIS=" + state.ois + ", EIS=" + state.eis);
+        String focus = state.focus >= 0 ? String.format(Locale.ROOT, "%.2f D", state.focus) : afName(state.afMode);
+        String sensor = state.iso > 0 ? String.format(Locale.ROOT, "ISO=%d, obturacion=%.3f ms", state.iso, state.exposure / 1_000_000.0)
+                : "ISO/obturacion=AUTO";
+        Ln.i("Camara " + cameraId + " solicitado: " + sensor + ", foco=" + focus + ", FPS=" + (state.fps > 0 ? state.fps : "AUTO")
+                + ", EV=" + ev + ", AE-lock=" + state.aeLock + ", WB=" + whiteBalanceName(state.awbMode)
+                + ", AWB-lock=" + state.awbLock + ", OIS=" + state.ois + ", EIS=" + state.eis
+                + ", antibanding=" + state.antibandingMode + ", NR=" + modeName(state.noiseReductionMode)
+                + ", edge=" + modeName(state.edgeMode) + ", tonemap=" + modeName(state.tonemapMode)
+                + ", distortion=" + modeName(state.distortionMode) + ", effect=" + state.effectMode);
     }
 
     private void printCapabilities() {
@@ -537,5 +719,18 @@ public final class CameraControls {
                 + ", regiones AF=" + characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF)
                 + ", regiones AE=" + characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE)
                 + ", WB=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)));
+        Ln.i("POCO V3 capacidades: facing=" + characteristics.get(CameraCharacteristics.LENS_FACING)
+                + ", hardwareLevel=" + characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+                + ", capabilities=" + Arrays.toString(characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES))
+                + ", FPS=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES))
+                + ", AF=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES))
+                + ", antibanding=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES))
+                + ", effects=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_EFFECTS)));
+        Ln.i("POCO V3 procesamiento: NR=" + Arrays.toString(characteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES))
+                + ", edge=" + Arrays.toString(characteristics.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES))
+                + ", tonemap=" + Arrays.toString(characteristics.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES))
+                + ", distortion=" + Arrays.toString(characteristics.get(CameraCharacteristics.DISTORTION_CORRECTION_AVAILABLE_MODES))
+                + ", OIS modes=" + Arrays.toString(characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION))
+                + ", videoStab=" + Arrays.toString(characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)));
     }
 }

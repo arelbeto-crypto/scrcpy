@@ -1,12 +1,12 @@
-name: POCO Live Camera Controls V2
+name: POCO Live Camera Controls V3
 
 on:
   push:
-    branches: [camera-controls-poco-v1]
+    branches: [camera-controls-poco-v3]
   workflow_dispatch:
 
 env:
-  VERSION: camera-controls-poco-v2
+  VERSION: camera-controls-poco-v3
 
 jobs:
   build-server:
@@ -24,7 +24,7 @@ jobs:
         run: release/build_server.sh
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-server-camera-v2
+          name: scrcpy-server-camera-v3
           path: release/work/build-server/server/scrcpy-server
 
   build-win64:
@@ -48,7 +48,7 @@ jobs:
           tar -C . -cvf dist-tar/dist.tar.gz dist/
       - uses: actions/upload-artifact@v7
         with:
-          name: build-win64-camera-v2
+          name: build-win64-camera-v3
           path: release/work/build-win64/dist-tar/
 
   package-win64:
@@ -58,11 +58,11 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-server-camera-v2
+          name: scrcpy-server-camera-v3
           path: release/work/build-server/server/
       - uses: actions/download-artifact@v8
         with:
-          name: build-win64-camera-v2
+          name: build-win64-camera-v3
           path: release/work/build-win64/dist-tar/
       - name: Assemble portable Windows package
         run: |
@@ -74,7 +74,7 @@ jobs:
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-controls-poco-v2-win64
+          name: scrcpy-camera-controls-poco-v3-win64
           path: release/output/
 
   test-client:
@@ -103,7 +103,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-camera-controls-poco-v2-win64
+          name: scrcpy-camera-controls-poco-v3-win64
           path: package
       - name: Check portable executable and lens selector
         shell: pwsh
@@ -112,7 +112,7 @@ jobs:
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath unpacked
           $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
           $version = & $exe.FullName --version 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco2') { throw "scrcpy failed to start: $version" }
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '4.1-poco3') { throw "scrcpy failed to start: $version" }
           $help = & $exe.FullName --help 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $help -notmatch 'camera-focus-distance') { throw 'Camera options missing' }
           $tokens = $null

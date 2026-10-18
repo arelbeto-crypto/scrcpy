@@ -13,7 +13,7 @@ if ($devices.Count -gt 1) {
     $serial = $devices[$n-1]
 }
 function Camera([string]$id, [string[]]$extra) {
-    $opts = @('-s', $serial, '--video-source=camera', "--camera-id=$id", '--no-audio', '--shortcut-mod=lalt', '--hwdec=auto', '--video-codec=h264') + $extra
+    $opts = @('-s', $serial, '--video-source=camera', "--camera-id=$id", '--no-audio', '--shortcut-mod=lalt', '--hwdec=disabled', '--video-codec=h264') + $extra
     & $exe @opts
 }
 while ($true) {

@@ -1,4 +1,4 @@
-name: POCO V8.1 scrcpy 5.0.1 Camera2 AR Windows
+name: POCO V8.2 scrcpy 5.0.1 Camera2 AR Windows
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - 'release/poco/POCO_V8_MENU.ps1'
       - 'release/poco/POCO_V8_MENU.bat'
       - 'release/poco/CONTROLES_AR_V81.txt'
+      - 'release/poco/CONTROLES_AR_V82.txt'
       - '.github/workflows/poco-v81-scrcpy-5.yml'
   workflow_dispatch:
 
@@ -36,7 +37,7 @@ jobs:
           python3 release/poco/APPLY_V8_AR_PATCH.py
           grep -q 'POCO V8 AR shortcuts' app/src/input_manager.c
           grep -q 'sc_screen_render_camera_ar_overlay' app/src/screen.c
-      - name: Port Camera2 focus ISO and exposure commands
+      - name: Port Camera2 controls and preserved aliases
         run: |
           cp custom/release/poco/APPLY_V8_CAMERA_PRO_PATCH.py scrcpy5/release/poco/
           cd scrcpy5
@@ -66,17 +67,18 @@ jobs:
       - name: Package portable Windows V8
         working-directory: scrcpy5
         env:
-          VERSION: 5.0.1-poco81-ar
+          VERSION: 5.0.1-poco82-ar
         run: |
           cp ../custom/release/poco/POCO_V8_MENU.ps1 release/work/build-win64/dist/
           cp ../custom/release/poco/POCO_V8_MENU.bat release/work/build-win64/dist/
           cp ../custom/release/poco/CONTROLES_AR_V8.txt release/work/build-win64/dist/
           cp ../custom/release/poco/CONTROLES_AR_V81.txt release/work/build-win64/dist/
-          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.1 static camera AR overlay + Camera2 manual focus/ISO/shutter' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
+          cp ../custom/release/poco/CONTROLES_AR_V82.txt release/work/build-win64/dist/
+          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.2 static camera AR overlay + preserved Camera2 controls + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-ar-poco-v81-scrcpy-5.0.1-win64
+          name: scrcpy-camera-ar-poco-v82-scrcpy-5.0.1-win64
           path: scrcpy5/release/output/*.zip
           if-no-files-found: error
           retention-days: 90
@@ -87,7 +89,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-camera-ar-poco-v81-scrcpy-5.0.1-win64
+          name: scrcpy-camera-ar-poco-v82-scrcpy-5.0.1-win64
           path: package
       - name: Verify portable EXE version and menu syntax
         shell: pwsh
@@ -101,7 +103,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $version -notmatch '5\.0\.1') { throw "Version mismatch: $version" }
           $help = & $exe.FullName --help 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0 -or $help -notmatch 'hwdec') { throw 'scrcpy 5 hardware decode option missing' }
-          foreach ($f in @('scrcpy-server', 'POCO_V8_MENU.ps1', 'POCO_V8_MENU.bat', 'CONTROLES_AR_V8.txt', 'CONTROLES_AR_V81.txt', 'BUILD_INFO_V8.txt')) {
+          foreach ($f in @('scrcpy-server', 'POCO_V8_MENU.ps1', 'POCO_V8_MENU.bat', 'CONTROLES_AR_V8.txt', 'CONTROLES_AR_V81.txt', 'CONTROLES_AR_V82.txt', 'BUILD_INFO_V8.txt')) {
             if (!(Test-Path (Join-Path $exe.DirectoryName $f))) { throw "$f missing" }
           }
           $tokens = $null
@@ -109,4 +111,5 @@ jobs:
           $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1'), [ref]$tokens, [ref]$parseErrors)
           if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
           Write-Host $version
-          Write-Host 'V8 Windows packaging smoke test passed'
+          if ((Get-Content (Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1') -Raw) -notmatch '--hwdec=disabled') { throw 'software decode default missing' }
+          Write-Host 'V8.2 Windows packaging smoke test passed'

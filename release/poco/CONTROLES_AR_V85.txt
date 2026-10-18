@@ -1,0 +1,79 @@
+POCO V8.5 | BOKEH PULIDO + TRACKING DE BAJA LATENCIA + MASK FX
+
+OBJETIVO
+- Acer = solo visor/decoder con --hwdec=disabled.
+- POCO = Camera2 + OpenGL ES + composicion + H.264.
+- Redmi Note 10 Pro = segmentacion + tracking facial/landmarks.
+- El tracking ya no espera a que termine la segmentacion.
+
+CAMBIOS V8.5
+
+TRACKING
+- Rostro y segmentacion se procesan de forma independiente en el Redmi.
+- El canal de tracking facial viaja en mensajes pequenos separados de la mascara.
+- Face detector FAST + landmarks + tracking.
+- Si la segmentacion sigue ocupada, el Redmi sigue aceptando frames nuevos para rostro.
+- Dos workers de callbacks evitan que comprimir una mascara retrase el tracking.
+- Suavizado adaptativo: movimientos grandes responden rapido; movimientos pequenos se estabilizan.
+- El tracking remoto se considera viejo antes para que Camera2 del POCO tome el relevo sin dejar el efecto flotando.
+
+BOKEH
+- Intensidad aumentada en los 4 niveles.
+- Blur de 13 muestras en el POCO.
+- Radio de blur mucho mayor en niveles altos.
+- Mascara temporalmente estabilizada para reducir parpadeo.
+- Dilatacion/feather de la mascara en GPU para proteger cabello y bordes.
+- Transicion sujeto/fondo mas suave.
+- Fondo con ligera desaturacion y caida de luminancia para efecto retrato/cinematografico.
+- Borde del sujeto recibe una correccion minima para evitar halo gris.
+- Una mascara vieja se invalida automaticamente.
+
+MASK FX / AR
+1. Lentes: mas grandes, aro grueso y glow azul.
+2. Bigote: mayor tamano y contraste.
+3. Mascara: ahora cubre el rostro, deja huecos de ojos y agrega borde cyan/morado.
+4. Halo: mas grande, doble halo/glow.
+5. Rubor: mas visible.
+6. Corazones: mas grandes y tres puntos alrededor del rostro.
+7. Neon: integra tambien el borde de la silueta obtenido de la segmentacion.
+8. Corona: mas alta, ancha y luminosa.
+
+CONTROLES
+Alt + V                         Bokeh ON/OFF.
+Alt + Shift + V                 Intensidad bokeh 1/2/3/4.
+Alt + J                         Estado Redmi/tracking/mascara.
+Alt + Y                         AR siguiente.
+Alt + Shift + Y                 AR anterior.
+Alt + Shift + 1..9              AR directo.
+Alt + S                         Smart Zoom ON/OFF.
+Alt + Shift + S                 Wide/Medium/Close.
+Alt + Ctrl + 1..5               Zoom 1x/1.5x/2x/3x/5x.
+
+CONTROLES CAMERA2 CONSERVADOS
+Clic                            AF puntual.
+Shift + clic                    AE puntual.
+Alt + Izq./Der.                 Foco manual.
+Alt + Shift + Izq./Der.         ISO.
+Alt + Shift + Abajo/Arriba      Obturacion.
+Alt + RePag/AvPag               EV.
+Alt + A                         Autofocus.
+Alt + Shift + A                 Exposicion automatica.
+Alt + K                         Bloqueo de foco.
+Alt + L                         Bloqueo AE.
+Alt + Shift + L                 Bloqueo AWB.
+Alt + M / Alt + Shift + M       Modo AF.
+Alt + 0                         Reset automatico.
+Alt + Arriba/Abajo              Zoom manual.
+Alt + 1..9                      Escenas.
+Alt + F/I/E                     Alias foco/ISO/obturacion.
+Alt + T                         Linterna.
+Alt + H                         Camera2 info.
+F1                              Ayuda.
+F11                             Pantalla completa.
+
+RED
+UDP 48764                       Descubrimiento.
+TCP 48765                       Video auxiliar + tracking + mascara.
+
+PERFIL RECOMENDADO
+scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps

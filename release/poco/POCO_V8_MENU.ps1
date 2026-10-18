@@ -18,10 +18,10 @@ function Camera([string]$id, [string[]]$extra) {
 }
 while ($true) {
     Write-Host ''
-    Write-Host 'POCO V8 / scrcpy 5.0.1 + AR | Alt+Y filtro | Alt+Shift+1..9 directo'
+    Write-Host 'POCO V8.3 / scrcpy 5.0.1 | Camera2 + Smart Zoom + escenas + AR'
     Write-Host '[1] Camara ID0 auto | [2] MultiCam ID3 auto'
     Write-Host '[3] ID0 1080p 30fps | [4] ID3 1080p 30fps'
-    Write-Host '[5] Listar camaras | [6] Version | [Q] Salir'
+    Write-Host '[5] Listar camaras | [6] Version | [7] Ver controles V8.3 | [Q] Salir'
     switch ((Read-Host 'Opcion').ToUpperInvariant()) {
        '1' { Camera '0' @() }
        '2' { Camera '3' @() }
@@ -29,6 +29,7 @@ while ($true) {
        '4' { Camera '3' @('--camera-size=1920x1080', '--camera-fps=30', '--video-bit-rate=12M') }
        '5' { & $exe -s $serial --list-cameras; & $exe -s $serial --list-camera-sizes }
        '6' { & $exe --version }
+       '7' { Get-Content (Join-Path $PSScriptRoot 'CONTROLES_AR_V83.txt') }
        'Q' { return }
     }
 }

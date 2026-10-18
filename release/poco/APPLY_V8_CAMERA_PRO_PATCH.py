@@ -186,6 +186,9 @@ CAMERA_API = r'''
     private boolean proAeLock;
     private boolean proAwbLock;
     private int proAfMode = -1;
+    private int proLastIso;
+    private long proLastExposureNs;
+    private Float proLastFocus;
     private static final int PRO_FOCUS = 0;
     private static final int PRO_ISO = 1;
     private static final int PRO_EXPOSURE = 2;
@@ -256,6 +259,15 @@ CAMERA_API = r'''
         }
     }
 
+    private void proUpdateMeasurements(TotalCaptureResult result) {
+        Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Float focus = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+        if (iso != null && iso > 0) proLastIso = iso;
+        if (exposure != null && exposure > 0) proLastExposureNs = exposure;
+        if (focus != null) proLastFocus = focus;
+    }
+
     private static int clampInt(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -283,7 +295,8 @@ CAMERA_API = r'''
                      + ", ISO range=" + proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
                      + ", exposure range(ns)=" + proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
                      + ", state ISO=" + proIso + ", shutter(ns)=" + proExposureNs + ", focus(diopters)=" + proFocus
-                     + ", EV=" + proEv + ", AE-lock=" + proAeLock + ", AWB-lock=" + proAwbLock + ", AF mode=" + proAfMode);
+                     + ", EV=" + proEv + ", AE-lock=" + proAeLock + ", AWB-lock=" + proAwbLock + ", AF mode=" + proAfMode
+                     + ", measured ISO=" + proLastIso + ", measured shutter(ns)=" + proLastExposureNs + ", measured focus=" + proLastFocus);
                 return;
             }
             try {
@@ -311,7 +324,7 @@ CAMERA_API = r'''
                     }
                     float max = proCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
                     float step = Math.max(0.02f, max / 100f);
-                    float base = proFocus < 0 ? 0 : proFocus;
+                    float base = proFocus >= 0 ? proFocus : (proLastFocus != null ? proLastFocus : 0.0f);
                     if (command == PRO_FOCUS) {
                         base += direction > 0 ? step : -step;
                     }
@@ -335,8 +348,14 @@ CAMERA_API = r'''
                     long minExposure = expRange.getLower();
                     long maxExposure = expRange.getUpper();
                     if (fps > 0) maxExposure = Math.min(maxExposure, Math.max(minExposure, 1000000000L / fps));
-                    if (proIso <= 0) proIso = clampInt(100, isoRange.getLower(), isoRange.getUpper());
-                    if (proExposureNs <= 0) proExposureNs = clampLong(16666666L, minExposure, maxExposure);
+                    if (proIso <= 0) {
+                        int seedIso = proLastIso > 0 ? proLastIso : 100;
+                        proIso = clampInt(seedIso, isoRange.getLower(), isoRange.getUpper());
+                    }
+                    if (proExposureNs <= 0) {
+                        long seedExposure = proLastExposureNs > 0 ? proLastExposureNs : 16666666L;
+                        proExposureNs = clampLong(seedExposure, minExposure, maxExposure);
+                    }
                     if (command == PRO_ISO) {
                         proIso = clampInt((int) Math.round(proIso * (direction > 0 ? 1.25 : 0.8)),
                                           isoRange.getLower(), isoRange.getUpper());
@@ -484,12 +503,15 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
      "import com.genymobile.scrcpy.model.Size;\nimport com.genymobile.scrcpy.model.Position;\nimport com.genymobile.scrcpy.model.Point;\n"),
     ("import android.hardware.camera2.params.MeteringRectangle;",
      "import android.hardware.camera2.params.OutputConfiguration;\n",
-     "import android.hardware.camera2.params.OutputConfiguration;\nimport android.hardware.camera2.params.MeteringRectangle;\n"),
+     "import android.hardware.camera2.params.OutputConfiguration;\nimport android.hardware.camera2.params.MeteringRectangle;\nimport android.hardware.camera2.CaptureResult;\nimport android.hardware.camera2.TotalCaptureResult;\n"),
     ("private CameraCharacteristics proCharacteristics;",
      "    private CaptureRequest.Builder requestBuilder;\n",
      "    private CaptureRequest.Builder requestBuilder;\n" + CAMERA_API),
     ("proCharacteristics = characteristics;",
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);",
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);\n                    proCharacteristics = characteristics;"),
+    ("proUpdateMeasurements(result);",
+     "            @Override\n            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {",
+     "            @Override\n            public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {\n                proUpdateMeasurements(result);\n            }\n\n            @Override\n            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {"),
 ])
 print("POCO V8.1 camera-controls protocol patch applied")

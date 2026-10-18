@@ -52,7 +52,7 @@ jobs:
           grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_PRO' app/src/control_msg.h
           grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_METERING' app/src/control_msg.h
           grep -q 'case SDLK_PAGEUP' app/src/input_manager.c
-          grep -q 'POCO V8.2 F1 camera help' app/src/input_manager.c
+          grep -q 'POCO V8.3: Alt+S=Smart Zoom' app/src/input_manager.c
           grep -q 'applyProCommand' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'applyProMetering' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'proUpdateMeasurements' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java

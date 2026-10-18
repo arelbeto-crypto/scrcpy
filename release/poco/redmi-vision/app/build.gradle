@@ -1,0 +1,40 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = 'com.poco.visioncoprocessor'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'com.poco.visioncoprocessor'
+        minSdk = 23
+        targetSdk = 33
+        versionCode = 84
+        versionName = '8.4'
+    }
+
+    signingConfigs {
+        debug {
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Both models are bundled: after installing the APK, inference does not
+    // depend on Play Services downloading a model.
+    implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+    implementation 'com.google.mlkit:face-detection:16.1.7'
+}

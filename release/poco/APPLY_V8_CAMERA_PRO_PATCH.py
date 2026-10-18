@@ -190,6 +190,41 @@ CAMERA_API = r'''
             && proCharacteristics.getAvailableCaptureRequestKeys().contains(CaptureRequest.LENS_FOCUS_DISTANCE);
     }
 
+    private int proAutoFocusMode() {
+        int[] modes = proCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+        if (proHas(modes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)) {
+            return CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO;
+        }
+        if (proHas(modes, CaptureRequest.CONTROL_AF_MODE_AUTO)) {
+            return CaptureRequest.CONTROL_AF_MODE_AUTO;
+        }
+        return CaptureRequest.CONTROL_AF_MODE_OFF;
+    }
+
+    private void proRestoreAutoFocus() {
+        proFocus = -1;
+        proAfMode = proAutoFocusMode();
+        requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, proAfMode);
+        if (proManualFocus()) {
+            requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+        }
+    }
+
+    private void proRestoreAutoExposure() {
+        proIso = 0;
+        proExposureNs = 0;
+        proAeLock = false;
+        requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        if (proManualSensor()) {
+            requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, null);
+            requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, null);
+        }
+        Boolean aeLockAvailable = proCharacteristics.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE);
+        if (Boolean.TRUE.equals(aeLockAvailable)) {
+            requestBuilder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        }
+    }
+
     private static int clampInt(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -216,35 +251,40 @@ CAMERA_API = r'''
                      + ", max focus=" + proCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)
                      + ", ISO range=" + proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
                      + ", exposure range(ns)=" + proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-                     + ", state ISO=" + proIso + ", shutter(ns)=" + proExposureNs + ", focus(diopters)=" + proFocus);
+                     + ", state ISO=" + proIso + ", shutter(ns)=" + proExposureNs + ", focus(diopters)=" + proFocus
+                     + ", EV=" + proEv + ", AE-lock=" + proAeLock + ", AWB-lock=" + proAwbLock + ", AF mode=" + proAfMode);
                 return;
             }
             try {
-                if (command == PRO_AUTO) {
-                    proIso = 0;
-                    proExposureNs = 0;
-                    proFocus = -1;
-                    requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-                    int[] afModes = proCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
-                    requestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
-                        proHas(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-                          ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
-                          : (proHas(afModes, CaptureRequest.CONTROL_AF_MODE_AUTO)
-                            ? CaptureRequest.CONTROL_AF_MODE_AUTO : CaptureRequest.CONTROL_AF_MODE_OFF));
-                    if (proManualSensor()) {
-                        requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, null);
-                        requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, null);
+                if (command == PRO_AUTO_FOCUS) {
+                    proRestoreAutoFocus();
+                    Ln.i("POCO Camera2: autofocus restored");
+                } else if (command == PRO_AUTO_EXPOSURE) {
+                    proRestoreAutoExposure();
+                    Ln.i("POCO Camera2: auto exposure restored");
+                } else if (command == PRO_RESET_AUTO) {
+                    proRestoreAutoFocus();
+                    proRestoreAutoExposure();
+                    proEv = 0;
+                    proAwbLock = false;
+                    requestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, 0);
+                    Boolean awbLockAvailable = proCharacteristics.get(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE);
+                    if (Boolean.TRUE.equals(awbLockAvailable)) {
+                        requestBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, false);
                     }
-                    if (proManualFocus()) requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
-                    Ln.i("POCO Camera2: focus, ISO and exposure returned to auto");
-                } else if (command == PRO_FOCUS) {
+                    Ln.i("POCO Camera2: focus, exposure, EV and locks returned to auto");
+                } else if (command == PRO_FOCUS || command == PRO_FOCUS_LOCK) {
                     if (!proManualFocus()) {
                         Ln.w("POCO Camera2: focus distance not supported on this lens");
                         return;
                     }
                     float max = proCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
-                    float step = Math.max(0.05f, max / 25f);
-                    proFocus = Math.max(0, Math.min(max, (proFocus < 0 ? 0 : proFocus) + (direction > 0 ? step : -step)));
+                    float step = Math.max(0.02f, max / 100f);
+                    float base = proFocus < 0 ? 0 : proFocus;
+                    if (command == PRO_FOCUS) {
+                        base += direction > 0 ? step : -step;
+                    }
+                    proFocus = Math.max(0, Math.min(max, base));
                     requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
                     requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, proFocus);
                     Ln.i("POCO Camera2 manual focus = " + proFocus + " diopters (0=infinity)");
@@ -273,10 +313,63 @@ CAMERA_API = r'''
                         proExposureNs = clampLong((long) (proExposureNs * (direction > 0 ? 1.25 : 0.8)),
                                                   minExposure, maxExposure);
                     }
+                    proAeLock = false;
                     requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
                     requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, proIso);
                     requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, proExposureNs);
                     Ln.i("POCO Camera2 manual ISO=" + proIso + " exposure=" + (proExposureNs / 1000000.0) + "ms");
+                } else if (command == PRO_AE_LOCK) {
+                    Boolean available = proCharacteristics.get(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE);
+                    if (!Boolean.TRUE.equals(available) || proIso > 0) {
+                        Ln.w("POCO Camera2: AE lock requires auto exposure and camera support");
+                        return;
+                    }
+                    proAeLock = !proAeLock;
+                    requestBuilder.set(CaptureRequest.CONTROL_AE_LOCK, proAeLock);
+                    Ln.i("POCO Camera2 AE lock = " + proAeLock);
+                } else if (command == PRO_AWB_LOCK) {
+                    Boolean available = proCharacteristics.get(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE);
+                    if (!Boolean.TRUE.equals(available)) {
+                        Ln.w("POCO Camera2: AWB lock unsupported");
+                        return;
+                    }
+                    proAwbLock = !proAwbLock;
+                    requestBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, proAwbLock);
+                    Ln.i("POCO Camera2 AWB lock = " + proAwbLock);
+                } else if (command == PRO_EV) {
+                    android.util.Range<Integer> evRange =
+                        proCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+                    if (evRange == null || proIso > 0) {
+                        Ln.w("POCO Camera2: EV requires auto exposure");
+                        return;
+                    }
+                    proAeLock = false;
+                    proEv = clampInt(proEv + (direction > 0 ? 1 : -1), evRange.getLower(), evRange.getUpper());
+                    requestBuilder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+                    requestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, proEv);
+                    Ln.i("POCO Camera2 EV index = " + proEv);
+                } else if (command == PRO_AF_MODE) {
+                    int[] modes = proCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+                    if (modes == null || modes.length == 0) {
+                        Ln.w("POCO Camera2: AF modes unavailable");
+                        return;
+                    }
+                    int current = proAfMode >= 0 ? proAfMode : proAutoFocusMode();
+                    int index = 0;
+                    for (int i = 0; i < modes.length; ++i) {
+                        if (modes[i] == current) {
+                            index = i;
+                            break;
+                        }
+                    }
+                    index = (index + (direction < 0 ? modes.length - 1 : 1)) % modes.length;
+                    proAfMode = modes[index];
+                    proFocus = -1;
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, proAfMode);
+                    if (proManualFocus()) {
+                        requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+                    }
+                    Ln.i("POCO Camera2 AF mode = " + proAfMode);
                 } else {
                     Ln.w("POCO Camera2: unsupported command " + command);
                     return;

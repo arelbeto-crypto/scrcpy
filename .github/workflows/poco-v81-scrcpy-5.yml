@@ -43,7 +43,12 @@ jobs:
           cd scrcpy5
           python3 release/poco/APPLY_V8_CAMERA_PRO_PATCH.py
           grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_PRO' app/src/control_msg.h
+          grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_METERING' app/src/control_msg.h
+          grep -q 'case SDLK_PAGEUP' app/src/input_manager.c
+          grep -q 'POCO V8.2 F1 camera help' app/src/input_manager.c
           grep -q 'applyProCommand' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'applyProMetering' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'proUpdateMeasurements' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
       - uses: actions/setup-java@v5
         with:
           distribution: zulu

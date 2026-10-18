@@ -51,12 +51,12 @@ camera_pro_control(struct sc_input_manager *im, uint8_t command, int8_t directio
 
 static void
 camera_zoom_in(struct sc_input_manager *im) {"""),
-    ("if (video && !shift && !repeat && down && !im->camera) {\n                    sc_screen_toggle_fullscreen",
-     "if (video && !shift && !repeat && down) {\n                    sc_screen_toggle_fullscreen",
-     "if (video && !shift && !repeat && down && !im->camera) {\n                    sc_screen_toggle_fullscreen"),
-    ("if (video && !shift && !repeat && down && !im->camera) {\n                    switch_fps_counter_state",
-     "if (video && !shift && !repeat && down) {\n                    switch_fps_counter_state",
-     "if (video && !shift && !repeat && down && !im->camera) {\n                    switch_fps_counter_state"),
+    ("POCO Camera2: do not consume focus hotkey in fullscreen shortcut",
+     "            case SDLK_F:\n                if (video && !shift && !repeat && down) {\n                    sc_screen_toggle_fullscreen(im->screen);\n                }\n                return;",
+     "            case SDLK_F:\n                if (im->camera) break; // POCO Camera2: do not consume focus hotkey in fullscreen shortcut\n                if (video && !shift && !repeat && down) {\n                    sc_screen_toggle_fullscreen(im->screen);\n                }\n                return;"),
+    ("POCO Camera2: do not consume ISO hotkey in FPS shortcut",
+     "            case SDLK_I:\n                if (video && !shift && !repeat && down) {\n                    switch_fps_counter_state(im);\n                }\n                return;",
+     "            case SDLK_I:\n                if (im->camera) break; // POCO Camera2: do not consume ISO hotkey in FPS shortcut\n                if (video && !shift && !repeat && down) {\n                    switch_fps_counter_state(im);\n                }\n                return;"),
     ("POCO V8.1 Camera2 manual",
      "        if (control && im->camera) {\n            switch (sdl_keycode) {\n                case SDLK_T:",
      """        if (control && im->camera) {

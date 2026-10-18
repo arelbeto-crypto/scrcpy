@@ -1,0 +1,10 @@
+POCO V8 / scrcpy oficial 5.0.1 con overlay AR 2D para camara.
+Abrir POCO_V8_MENU.bat. ADB autorizado y USB conectado.
+Alt+Y: siguiente AR; Alt+Shift+Y: anterior.
+Alt+Shift+1: apagar AR; +2: lentes; +3: bigote; +4: mascara;
++5: halo; +6: mejillas; +7: corazones; +8: neon; +9: corona.
+Alt+T: linterna; Alt+arriba/abajo: zoom (funciones scrcpy 5).
+Overlay fijo sin seguimiento facial. Aceleracion de decodificacion v5.
+NO incluye filtros nativos Camera2 V6 ni controles ISO/exposicion/foco V7.
+Para usarlos conserva la version V7 en otra carpeta.
+NO mezclar scrcpy.exe, scrcpy-server ni DLL entre versiones.

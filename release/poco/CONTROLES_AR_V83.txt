@@ -68,3 +68,20 @@ NOTAS
 
 PERFIL RECOMENDADO
 scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps
+
+
+PULIDO V8.3
+- Smart Zoom limita el maximo por perfil: Wide hasta 2x, Medium hasta 3x, Close hasta 4x.
+- Control de zoom con zona muerta para evitar temblor por pequenas variaciones del detector.
+- Actualizacion del zoom reducida para no reescribir Camera2 en cada frame.
+- Cuando se pierde la cara, espera varias mediciones y vuelve a 1x lentamente.
+- Un preset de zoom fijo desactiva tambien el detector facial de Smart Zoom.
+- El zoom manual desactiva Smart Zoom completamente.
+- Cambiar de escena limpia primero tonemap, reduccion de ruido, edge, efecto, WB y EV de la escena anterior.
+- Alt+H ahora informa escena, Smart Zoom y perfil activo.
+
+BOKEH
+- No se ha activado Camera2 Extensions Bokeh para esta salida de video: Android limita
+  las Camera Extensions oficiales a preview/captura de imagen y no a captura de video.
+- El bokeh de video se implementara en la ruta de render/segmentacion para no romper
+  la captura MediaCodec actual.

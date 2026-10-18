@@ -51,7 +51,7 @@ public final class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("Redmi Vision Coprocessor V8.4");
+        title.setText("Redmi Vision Coprocessor V8.5");
         title.setTextSize(22);
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

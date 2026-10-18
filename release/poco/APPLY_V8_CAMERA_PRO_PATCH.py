@@ -309,12 +309,37 @@ CAMERA_API = r'''
         }
     }
 
-    private void proApplyScene(int scene) {
-        proScene = Math.max(0, Math.min(8, scene));
+    private void proResetSceneProcessing() {
         proRestoreAutoExposure();
         proEv = 0;
+        if (proHasRequestKey(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION)) {
+            requestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, 0);
+        }
         proSetEffectIfSupported(CaptureRequest.CONTROL_EFFECT_MODE_OFF);
         proSetAwbIfSupported(CaptureRequest.CONTROL_AWB_MODE_AUTO);
+
+        int[] tm = proCharacteristics.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES);
+        if (proHasRequestKey(CaptureRequest.TONEMAP_MODE)
+                && proHas(tm, CaptureRequest.TONEMAP_MODE_FAST)) {
+            requestBuilder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST);
+        }
+
+        int[] nr = proCharacteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
+        if (proHasRequestKey(CaptureRequest.NOISE_REDUCTION_MODE)
+                && proHas(nr, CaptureRequest.NOISE_REDUCTION_MODE_FAST)) {
+            requestBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);
+        }
+
+        int[] edge = proCharacteristics.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES);
+        if (proHasRequestKey(CaptureRequest.EDGE_MODE)
+                && proHas(edge, CaptureRequest.EDGE_MODE_FAST)) {
+            requestBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST);
+        }
+    }
+
+    private void proApplyScene(int scene) {
+        proScene = Math.max(0, Math.min(8, scene));
+        proResetSceneProcessing();
         android.util.Range<Integer> evRange =
             proCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
         switch (proScene) {
@@ -369,13 +394,16 @@ CAMERA_API = r'''
             default:
                 break;
         }
-        Ln.i("POCO V8.3 scene preset = " + proScene);
+        String[] names = {"NEUTRAL", "CINEMATIC", "WARM", "COOL", "MONO", "NIGHT", "STAGE", "SEPIA", "AQUA"};
+        Ln.i("POCO V8.3 scene preset = " + names[proScene] + " (" + proScene + ")");
     }
 
     private void proApplyZoomPreset(int preset) {
         float[] ratios = {1.0f, 1.5f, 2.0f, 3.0f, 5.0f};
         int index = Math.max(0, Math.min(ratios.length - 1, preset));
-        proSmartZoom = false;
+        if (proSmartZoom) {
+            proSetSmartZoom(false);
+        }
         zoom = clampZoom(ratios[index]);
         requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
         Ln.i("POCO V8.3 zoom preset = " + zoom + "x");
@@ -412,6 +440,10 @@ CAMERA_API = r'''
 
     private void proUpdateSmartZoom(TotalCaptureResult result) {
         if (!proSmartZoom || currentSession == null || requestBuilder == null) return;
+
+        // Run the framing controller at ~5 Hz at 30 fps. Camera2 keeps
+        // detecting every frame, but we do not rewrite the repeating request
+        // on every result.
         if (++proSmartTick < 6) return;
         proSmartTick = 0;
 
@@ -420,9 +452,12 @@ CAMERA_API = r'''
         Rect active = proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         if (active == null) return;
 
+        boolean hasFace = faces != null && faces.length > 0;
         float desired;
-        if (faces == null || faces.length == 0) {
-            if (++proSmartMissingFrames < 5) return;
+
+        if (!hasFace) {
+            // Avoid pumping the zoom if one or two face results are missed.
+            if (++proSmartMissingFrames < 6) return;
             desired = 1.0f;
         } else {
             proSmartMissingFrames = 0;
@@ -437,17 +472,27 @@ CAMERA_API = r'''
                 }
             }
             if (best == null || best.width() <= 0 || best.height() <= 0) return;
+
             float coverage = Math.max((float) best.width() / active.width(),
                                       (float) best.height() / active.height());
-            float[] targets = {0.22f, 0.32f, 0.42f}; // wide, medium, close
-            float targetCoverage = targets[Math.max(0, Math.min(2, proSmartProfile))];
-            desired = zoom * targetCoverage / Math.max(0.05f, coverage);
+            float[] targetCoverage = {0.22f, 0.31f, 0.40f}; // wide, medium, close
+            float[] maxProfileZoom = {2.0f, 3.0f, 4.0f};
+            int profile = Math.max(0, Math.min(2, proSmartProfile));
+
+            desired = zoom * targetCoverage[profile] / Math.max(0.05f, coverage);
+            desired = Math.max(1.0f, Math.min(maxProfileZoom[profile], desired));
         }
 
         desired = clampZoom(desired);
-        float smoothed = zoom * 0.84f + desired * 0.16f;
-        smoothed = clampZoom(smoothed);
-        if (Math.abs(smoothed - zoom) < 0.025f) return;
+
+        // Face present: responsive but damped. Face lost: slower return to 1x.
+        float alpha = hasFace ? 0.14f : 0.08f;
+        float smoothed = clampZoom(zoom + (desired - zoom) * alpha);
+
+        // Dead zone removes small face-detection jitter.
+        float deadZone = Math.max(0.035f, zoom * 0.018f);
+        if (Math.abs(smoothed - zoom) < deadZone) return;
+
         zoom = smoothed;
         requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
         try {
@@ -495,7 +540,8 @@ CAMERA_API = r'''
                      + ", exposure range(ns)=" + proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
                      + ", state ISO=" + proIso + ", shutter(ns)=" + proExposureNs + ", focus(diopters)=" + proFocus
                      + ", EV=" + proEv + ", AE-lock=" + proAeLock + ", AWB-lock=" + proAwbLock + ", AF mode=" + proAfMode
-                     + ", measured ISO=" + proLastIso + ", measured shutter(ns)=" + proLastExposureNs + ", measured focus=" + proLastFocus);
+                     + ", measured ISO=" + proLastIso + ", measured shutter(ns)=" + proLastExposureNs + ", measured focus=" + proLastFocus
+                     + ", scene=" + proScene + ", SmartZoom=" + proSmartZoom + ", SmartProfile=" + proSmartProfile);
                 return;
             }
             try {
@@ -721,7 +767,7 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);\n                    proCharacteristics = characteristics;"),
     ("POCO V8.3 manual zoom override",
      "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();",
-     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();\n            proSmartZoom = false; // POCO V8.3 manual zoom override"),
+     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();\n            if (proSmartZoom) proSetSmartZoom(false); // POCO V8.3 manual zoom override"),
 
     ("proUpdateMeasurements(result);",
      "            @Override\n            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {",

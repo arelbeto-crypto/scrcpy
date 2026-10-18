@@ -48,7 +48,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
@@ -509,10 +509,10 @@ public final class VisionService extends Service {
         int count = maskWidth * maskHeight;
         byte[] raw = new byte[count];
 
-        FloatBuffer confidence = mask.getBuffer().duplicate();
+        ByteBuffer confidence = mask.getBuffer().duplicate().order(ByteOrder.nativeOrder());
         confidence.rewind();
-        for (int i = 0; i < count && confidence.hasRemaining(); ++i) {
-            float value = confidence.get();
+        for (int i = 0; i < count && confidence.remaining() >= 4; ++i) {
+            float value = confidence.getFloat();
             int q = Math.round(Math.max(0f, Math.min(1f, value)) * 255f);
             raw[i] = (byte) q;
         }

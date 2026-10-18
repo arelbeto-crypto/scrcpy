@@ -169,12 +169,12 @@ edit("server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java", [
 edit("server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java", [
     ("case ControlMessage.TYPE_CAMERA_PRO:",
      "            case ControlMessage.TYPE_CAMERA_SET_TORCH:\n                return parseCameraSetTorch();",
-     "            case ControlMessage.TYPE_CAMERA_SET_TORCH:\n                return parseCameraSetTorch();\n            case ControlMessage.TYPE_CAMERA_PRO:\n                return ControlMessage.createCameraPro(dis.readUnsignedByte(), dis.readByte());"),
+     "            case ControlMessage.TYPE_CAMERA_SET_TORCH:\n                return parseCameraSetTorch();\n            case ControlMessage.TYPE_CAMERA_PRO:\n                return ControlMessage.createCameraPro(dis.readUnsignedByte(), dis.readByte());\n            case ControlMessage.TYPE_CAMERA_METERING:\n                return ControlMessage.createCameraMetering(dis.readBoolean(), parsePosition());"),
 ])
 edit("server/src/main/java/com/genymobile/scrcpy/control/Controller.java", [
     ("case ControlMessage.TYPE_CAMERA_PRO:",
      "                case ControlMessage.TYPE_CAMERA_ZOOM_OUT:\n                    cameraCapture.zoomOut();\n                    return true;",
-     "                case ControlMessage.TYPE_CAMERA_ZOOM_OUT:\n                    cameraCapture.zoomOut();\n                    return true;\n                case ControlMessage.TYPE_CAMERA_PRO:\n                    cameraCapture.applyProCommand(msg.getId(), msg.getAction());\n                    return true;"),
+     "                case ControlMessage.TYPE_CAMERA_ZOOM_OUT:\n                    cameraCapture.zoomOut();\n                    return true;\n                case ControlMessage.TYPE_CAMERA_PRO:\n                    cameraCapture.applyProCommand(msg.getId(), msg.getAction());\n                    return true;\n                case ControlMessage.TYPE_CAMERA_METERING:\n                    cameraCapture.applyProMetering(msg.getOn(), msg.getPosition());\n                    return true;"),
 ])
 CAMERA_API = r'''
     // POCO V8.1: all mutable Camera2 state is confined to cameraHandler.

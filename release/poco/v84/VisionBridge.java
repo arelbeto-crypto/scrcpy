@@ -35,6 +35,7 @@ public final class VisionBridge implements Closeable {
     private static final int MSG_SESSION = 2;
     private static final int MSG_VIDEO = 3;
     private static final int MSG_MASK = 16;
+    private static final int MSG_FACE = 17;
 
     private static final int FLAG_CONFIG = 1;
     private static final int FLAG_KEY = 2;
@@ -253,6 +254,39 @@ public final class VisionBridge implements Closeable {
                                      rightEyeX, rightEyeY, mouthX, mouthY);
     }
 
+    private void readFace(DataInputStream in, int payloadSize) throws IOException {
+        if (payloadSize < 8 + 4 + 4 + 10 * 4) {
+            throw new IOException("Invalid Redmi face payload");
+        }
+        in.readLong(); // timestamp, freshness is based on receive time
+        float fps = in.readFloat();
+        int latencyMs = in.readInt();
+
+        float x = in.readFloat();
+        float y = in.readFloat();
+        float w = in.readFloat();
+        float h = in.readFloat();
+        float leftEyeX = in.readFloat();
+        float leftEyeY = in.readFloat();
+        float rightEyeX = in.readFloat();
+        float rightEyeY = in.readFloat();
+        float mouthX = in.readFloat();
+        float mouthY = in.readFloat();
+
+        int consumed = 8 + 4 + 4 + 10 * 4;
+        if (payloadSize > consumed) {
+            skipFully(in, payloadSize - consumed);
+        }
+
+        visionState.updateRemoteFace(x, y, w, h, leftEyeX, leftEyeY,
+                                     rightEyeX, rightEyeY, mouthX, mouthY);
+        // Reuse the status fields so Alt+J reflects the fast tracker rate.
+        RemoteVisionState.MaskFrame mask = visionState.getFreshMask();
+        if (mask != null) {
+            visionState.updateMask(mask.mask, mask.width, mask.height, mask.ptsUs, fps, latencyMs);
+        }
+    }
+
     private static byte[] inflate(byte[] compressed, int expected) throws IOException {
         Inflater inflater = new Inflater();
         inflater.setInput(compressed);
@@ -428,6 +462,8 @@ public final class VisionBridge implements Closeable {
                     }
                     if (type == MSG_MASK) {
                         readMask(in, size);
+                    } else if (type == MSG_FACE) {
+                        readFace(in, size);
                     } else {
                         skipFully(in, size);
                     }

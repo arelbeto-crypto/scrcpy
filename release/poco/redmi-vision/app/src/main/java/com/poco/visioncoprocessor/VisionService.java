@@ -594,7 +594,7 @@ public final class VisionService extends Service {
             raw[i] = (byte) q;
         }
 
-        FaceData face = selectFace(faces, imageWidth, imageHeight);
+        FaceData face = FaceData.NONE;
         byte[] compressed = deflate(raw);
         int compression = compressed.length < raw.length ? 1 : 0;
         byte[] payload = compression == 1 ? compressed : raw;

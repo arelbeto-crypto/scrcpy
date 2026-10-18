@@ -60,9 +60,9 @@ public final class RemoteVisionState {
     }
 
     private static final RemoteVisionState INSTANCE = new RemoteVisionState();
-    private static final long REMOTE_FACE_MAX_AGE_NS = 1_000_000_000L;
+    private static final long REMOTE_FACE_MAX_AGE_NS = 450_000_000L;
     private static final long CAMERA_FACE_MAX_AGE_NS = 600_000_000L;
-    private static final long MASK_MAX_AGE_NS = 1_250_000_000L;
+    private static final long MASK_MAX_AGE_NS = 900_000_000L;
 
     private volatile MaskFrame maskFrame;
     private volatile FaceFrame remoteFace;
@@ -102,8 +102,22 @@ public final class RemoteVisionState {
         if (mask == null || width <= 0 || height <= 0 || mask.length != width * height) {
             return;
         }
+        MaskFrame previous = maskFrame;
+        byte[] stable = mask;
+        if (previous != null && previous.width == width && previous.height == height
+                && previous.mask.length == mask.length
+                && System.nanoTime() - previous.receivedNs < MASK_MAX_AGE_NS) {
+            // Temporal confidence blend on only ~65K bytes for a 256x256 mask.
+            // New data dominates to keep latency low while preventing edge shimmer.
+            stable = new byte[mask.length];
+            for (int i = 0; i < mask.length; ++i) {
+                int oldValue = previous.mask[i] & 0xFF;
+                int newValue = mask[i] & 0xFF;
+                stable[i] = (byte) ((oldValue * 3 + newValue * 7 + 5) / 10);
+            }
+        }
         long generation = ++maskGeneration;
-        maskFrame = new MaskFrame(mask, width, height, ptsUs, generation);
+        maskFrame = new MaskFrame(stable, width, height, ptsUs, generation);
         remoteFps = fps;
         remoteLatencyMs = latencyMs;
     }
@@ -124,8 +138,32 @@ public final class RemoteVisionState {
             remoteFace = null;
             return;
         }
+        FaceFrame old = remoteFace;
+        if (old != null && System.nanoTime() - old.receivedNs < REMOTE_FACE_MAX_AGE_NS) {
+            float delta = Math.abs(old.x - x) + Math.abs(old.y - y)
+                    + Math.abs(old.w - w) + Math.abs(old.h - h);
+            float a = delta > 0.18f ? 0.92f : 0.78f;
+            float b = 1.0f - a;
+            x = old.x * b + x * a;
+            y = old.y * b + y * a;
+            w = old.w * b + w * a;
+            h = old.h * b + h * a;
+            leftEyeX = smooth(old.leftEyeX, leftEyeX, a);
+            leftEyeY = smooth(old.leftEyeY, leftEyeY, a);
+            rightEyeX = smooth(old.rightEyeX, rightEyeX, a);
+            rightEyeY = smooth(old.rightEyeY, rightEyeY, a);
+            mouthX = smooth(old.mouthX, mouthX, a);
+            mouthY = smooth(old.mouthY, mouthY, a);
+        }
         remoteFace = new FaceFrame(x, y, w, h, leftEyeX, leftEyeY,
                                    rightEyeX, rightEyeY, mouthX, mouthY, true);
+    }
+
+    private static float smooth(float oldValue, float newValue, float alpha) {
+        if (oldValue < 0 || newValue < 0) {
+            return newValue;
+        }
+        return oldValue * (1.0f - alpha) + newValue * alpha;
     }
 
     public void updateCamera2Face(Rect face, Rect active) {
@@ -175,13 +213,13 @@ public final class RemoteVisionState {
     public float getBokehStrength() {
         switch (bokehLevel) {
             case 0:
-                return 0.28f;
+                return 0.42f;
             case 1:
-                return 0.45f;
+                return 0.64f;
             case 2:
-                return 0.65f;
+                return 0.84f;
             default:
-                return 0.82f;
+                return 1.00f;
         }
     }
 

@@ -22,7 +22,6 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 
 import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceDetection;
@@ -147,7 +146,7 @@ public final class VisionService extends Service {
                         .build();
         faceDetector = FaceDetection.getClient(faceOptions);
 
-        inferenceExecutor = Executors.newSingleThreadExecutor(r -> {
+        inferenceExecutor = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "redmi-vision-inference");
             t.setPriority(Thread.NORM_PRIORITY + 1);
             return t;

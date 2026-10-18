@@ -97,6 +97,11 @@ public final class RemoteVisionState {
         return connected;
     }
 
+    public void updateRemoteStats(float fps, int latencyMs) {
+        remoteFps = fps;
+        remoteLatencyMs = latencyMs;
+    }
+
     public void updateMask(byte[] mask, int width, int height, long ptsUs,
                            float fps, int latencyMs) {
         if (mask == null || width <= 0 || height <= 0 || mask.length != width * height) {

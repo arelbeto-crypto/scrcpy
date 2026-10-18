@@ -145,7 +145,7 @@ edit("app/src/input_manager.c", [
 edit("server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java", [
     ("TYPE_CAMERA_PRO = 23",
      "    public static final int TYPE_SCAN_FILE = 22;\n",
-     "    public static final int TYPE_SCAN_FILE = 22;\n    public static final int TYPE_CAMERA_PRO = 23; // POCO V8.1\n"),
+     "    public static final int TYPE_SCAN_FILE = 22;\n    public static final int TYPE_CAMERA_PRO = 23; // POCO V8.1\n    public static final int TYPE_CAMERA_METERING = 24; // POCO V8.2\n"),
     ("createCameraPro(int command, int direction)",
      "    public static ControlMessage createCameraSetTorch(boolean on) {",
      """    public static ControlMessage createCameraPro(int command, int direction) {
@@ -153,6 +153,14 @@ edit("server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java", [
         msg.type = TYPE_CAMERA_PRO;
         msg.id = command;
         msg.action = direction;
+        return msg;
+    }
+
+    public static ControlMessage createCameraMetering(boolean exposure, Position position) {
+        ControlMessage msg = new ControlMessage();
+        msg.type = TYPE_CAMERA_METERING;
+        msg.on = exposure;
+        msg.position = position;
         return msg;
     }
 
@@ -404,8 +412,79 @@ CAMERA_API = r'''
         });
     }
 
+
+    public void applyProMetering(boolean exposure, Position position) {
+        if (cameraHandler == null) return;
+        cameraHandler.post(() -> {
+            assertCameraThread();
+            if (proCharacteristics == null || requestBuilder == null || currentSession == null || position == null) {
+                return;
+            }
+            try {
+                Point point = position.getPoint();
+                Size eventSize = position.getScreenSize();
+                if (point == null || eventSize == null || eventSize.getWidth() <= 0 || eventSize.getHeight() <= 0) {
+                    return;
+                }
+                Integer maxRegions = proCharacteristics.get(exposure
+                        ? CameraCharacteristics.CONTROL_MAX_REGIONS_AE
+                        : CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
+                if (maxRegions == null || maxRegions <= 0) {
+                    Ln.w("POCO Camera2: " + (exposure ? "AE" : "AF") + " point unsupported");
+                    return;
+                }
+                Rect active = proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                if (active == null) return;
+
+                int sx = active.left + (int) ((long) point.getX() * active.width() / eventSize.getWidth());
+                int sy = active.top + (int) ((long) point.getY() * active.height() / eventSize.getHeight());
+                int rw = Math.max(1, active.width() / 10);
+                int rh = Math.max(1, active.height() / 10);
+                int rx = Math.max(active.left, Math.min(active.right - rw, sx - rw / 2));
+                int ry = Math.max(active.top, Math.min(active.bottom - rh, sy - rh / 2));
+                MeteringRectangle[] regions = {
+                    new MeteringRectangle(rx, ry, rw, rh, MeteringRectangle.METERING_WEIGHT_MAX)
+                };
+
+                if (exposure) {
+                    proRestoreAutoExposure();
+                    requestBuilder.set(CaptureRequest.CONTROL_AE_REGIONS, regions);
+                    Ln.i("POCO Camera2 AE point = (" + point.getX() + ", " + point.getY() + ")");
+                    setRepeatingRequest(currentSession, requestBuilder.build());
+                } else {
+                    int[] modes = proCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+                    if (!proHas(modes, CaptureRequest.CONTROL_AF_MODE_AUTO)) {
+                        Ln.w("POCO Camera2: point AF unsupported");
+                        return;
+                    }
+                    proFocus = -1;
+                    proAfMode = CaptureRequest.CONTROL_AF_MODE_AUTO;
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+                    if (proManualFocus()) {
+                        requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+                    }
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, regions);
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                    currentSession.capture(requestBuilder.build(), null, cameraHandler);
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                    setRepeatingRequest(currentSession, requestBuilder.build());
+                    Ln.i("POCO Camera2 AF point = (" + point.getX() + ", " + point.getY() + ")");
+                }
+            } catch (CameraAccessException | IllegalArgumentException | IllegalStateException e) {
+                Ln.e("POCO Camera2: metering point rejected", e);
+            }
+        });
+    }
+
+
 '''
 edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
+    ("import com.genymobile.scrcpy.model.Position;",
+     "import com.genymobile.scrcpy.model.Size;\n",
+     "import com.genymobile.scrcpy.model.Size;\nimport com.genymobile.scrcpy.model.Position;\nimport com.genymobile.scrcpy.model.Point;\n"),
+    ("import android.hardware.camera2.params.MeteringRectangle;",
+     "import android.hardware.camera2.params.OutputConfiguration;\n",
+     "import android.hardware.camera2.params.OutputConfiguration;\nimport android.hardware.camera2.params.MeteringRectangle;\n"),
     ("private CameraCharacteristics proCharacteristics;",
      "    private CaptureRequest.Builder requestBuilder;\n",
      "    private CaptureRequest.Builder requestBuilder;\n" + CAMERA_API),

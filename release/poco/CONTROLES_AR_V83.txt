@@ -1,0 +1,70 @@
+POCO V8.3 | scrcpy 5.0.1 + Camera2 + Smart Zoom + Scene Looks + AR 2D
+
+BASE
+- Conserva todos los controles Camera2 de V8.2.
+- Cliente Windows usa --hwdec=disabled por defecto.
+- MOD = Alt izquierdo.
+- Los filtros de escena se aplican por Camera2 cuando la lente expone los controles necesarios.
+- Smart Zoom usa deteccion de rostro de Camera2 en el telefono; no usa IA pesada en la Acer.
+
+ZOOM PREDETERMINADO
+Alt + Ctrl + 1    1.0x
+Alt + Ctrl + 2    1.5x
+Alt + Ctrl + 3    2.0x
+Alt + Ctrl + 4    3.0x
+Alt + Ctrl + 5    5.0x
+
+SMART ZOOM
+Alt + S           Activar/desactivar Smart Zoom.
+Alt + Shift + S   Cambiar perfil: WIDE -> MEDIUM -> CLOSE.
+
+El Smart Zoom toma la cara de mayor tamano detectada por Camera2, suaviza el cambio
+y ajusta CONTROL_ZOOM_RATIO cada varios frames para evitar saltos. Si deja de ver
+rostros, vuelve progresivamente hacia 1x.
+
+ESCENAS
+Alt + 1           Neutral.
+Alt + 2           Cinematic: exposicion ligeramente baja + tonemap HQ si existe.
+Alt + 3           Warm: balance de blancos calido.
+Alt + 4           Cool: balance de blancos frio.
+Alt + 5           Mono: blanco y negro nativo Camera2.
+Alt + 6           Night: exposicion elevada + reduccion de ruido HQ si existe.
+Alt + 7           Stage: exposicion baja + edge/nitidez HQ si existe.
+Alt + 8           Sepia.
+Alt + 9           Aqua / neon frio.
+
+CONTROLES CAMERA2 CONSERVADOS
+Clic izquierdo                  AF puntual.
+Shift + clic izquierdo          AE puntual.
+Alt + Izquierda / Derecha       Enfoque manual.
+Alt + Shift + Izq. / Der.       ISO.
+Alt + Shift + Abajo / Arriba    Obturacion.
+Alt + RePag / AvPag             EV.
+Alt + A                         Autofocus.
+Alt + Shift + A                 Exposicion automatica.
+Alt + K                         Bloqueo de enfoque.
+Alt + L                         Bloqueo AE.
+Alt + Shift + L                 Bloqueo AWB.
+Alt + M / Alt + Shift + M       Modo AF siguiente/anterior.
+Alt + H                         Estado y capacidades.
+Alt + 0                         Reset automatico.
+Alt + Arriba / Abajo            Zoom manual.
+Alt + T                         Linterna.
+Alt + F/I/E                     Alias V8.1 de foco/ISO/obturacion.
+F1                              Ayuda en consola.
+F11                             Pantalla completa.
+
+AR
+Alt + Y / Alt + Shift + Y       Overlay siguiente/anterior.
+Alt + Shift + 1..9              OFF/lentes/bigote/mascara/halo/rubor/corazones/neon/corona.
+
+NOTAS
+- Alt+1..9 son escenas. Alt+Shift+1..9 siguen reservados para AR.
+- Un zoom manual o preset fijo desactiva Smart Zoom.
+- Si una lente no ofrece deteccion facial, Smart Zoom se rechaza sin romper la camara.
+- Si una escena pide un modo que la lente no soporta, se conserva el resto del preset.
+- No usar --camera-high-speed para los controles manuales.
+- El bokeh real con mascara de persona queda separado del Smart Zoom; no se simula como blur si no hay segmentacion.
+
+PERFIL RECOMENDADO
+scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps

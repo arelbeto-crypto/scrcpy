@@ -119,6 +119,29 @@ camera_zoom_in(struct sc_input_manager *im) {"""),
                     return;
                 case SDLK_T:"""),
 ])
+
+edit("app/src/control_msg.h", [
+    ("SC_CONTROL_MSG_TYPE_CAMERA_METERING",
+     "    SC_CONTROL_MSG_TYPE_CAMERA_PRO, // POCO V8.1 = 23\n",
+     "    SC_CONTROL_MSG_TYPE_CAMERA_PRO, // POCO V8.1 = 23\n    SC_CONTROL_MSG_TYPE_CAMERA_METERING, // POCO V8.2 = 24\n"),
+    ("} camera_metering;",
+     "        } camera_pro;\n",
+     "        } camera_pro;\n        struct {\n            bool exposure;\n            struct sc_position position;\n        } camera_metering;\n"),
+])
+edit("app/src/control_msg.c", [
+    ("case SC_CONTROL_MSG_TYPE_CAMERA_METERING:",
+     "        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n            sc_write16be(&buf[1]",
+     "        case SC_CONTROL_MSG_TYPE_CAMERA_METERING:\n            buf[1] = msg->camera_metering.exposure ? 1 : 0;\n            write_position(&buf[2], &msg->camera_metering.position);\n            return 14;\n        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n            sc_write16be(&buf[1]"),
+])
+edit("app/src/input_manager.c", [
+    ("POCO V8.2 F1 camera help",
+     "    switch (sdl_keycode) {\n        case SDLK_F11:",
+     "    switch (sdl_keycode) {\n        case SDLK_F1:\n            if (im->camera && down && !repeat) {\n                LOGI(\"POCO V8.2: click=AF | Shift+click=AE | Alt+Left/Right=focus | Alt+Shift+Left/Right=ISO\");\n                LOGI(\"POCO V8.2: Alt+Shift+Down/Up=shutter | Alt+PgUp/PgDn=EV | Alt+Up/Down=zoom\");\n                LOGI(\"POCO V8.2: Alt+A=AF auto | Alt+Shift+A=AE auto | Alt+K=focus lock | Alt+L=AE lock\");\n                LOGI(\"POCO V8.2: Alt+Shift+L=AWB lock | Alt+M=AF mode | Alt+0=reset | Alt+H=info\");\n                LOGI(\"POCO V8.2: aliases Alt+F/I/E=focus/ISO/shutter | Alt+T=torch | Alt+Y=AR\");\n            }\n            return;\n        case SDLK_F11:"),
+    ("POCO V8.2 point AF/AE",
+     "    if (im->camera || im->disconnected) {\n        return;\n    }\n\n    if (event->which == SDL_TOUCH_MOUSEID) {",
+     "    if (im->disconnected) {\n        return;\n    }\n\n    if (im->camera) {\n        if (im->controller && !im->screen->paused\n                && event->type == SDL_EVENT_MOUSE_BUTTON_DOWN\n                && event->button == SDL_BUTTON_LEFT) {\n            struct sc_position position = {\n                .screen_size = im->screen->frame_size,\n                .point = sc_screen_convert_window_to_frame_coords(im->screen, event->x, event->y),\n            };\n            if (position.point.x >= 0 && position.point.y >= 0\n                    && position.point.x < position.screen_size.width\n                    && position.point.y < position.screen_size.height) {\n                struct sc_control_msg msg = {\n                    .type = SC_CONTROL_MSG_TYPE_CAMERA_METERING,\n                    .camera_metering = {\n                        .exposure = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0,\n                        .position = position,\n                    },\n                };\n                if (!sc_controller_push_msg(im->controller, &msg)) {\n                    LOGW(\"Could not send POCO camera metering point\");\n                }\n            }\n        }\n        return;\n    }\n\n    if (event->which == SDL_TOUCH_MOUSEID) {"),
+])
+
 edit("server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java", [
     ("TYPE_CAMERA_PRO = 23",
      "    public static final int TYPE_SCAN_FILE = 22;\n",

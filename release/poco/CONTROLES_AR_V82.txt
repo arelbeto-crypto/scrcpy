@@ -1,0 +1,53 @@
+POCO V8.2 | scrcpy 5.0.1 + Camera2 en vivo + AR 2D
+
+BASE
+- Upstream scrcpy 5.0.1.
+- Decodificacion del cliente por defecto: --hwdec=disabled.
+- Los controles de camara anteriores se mantienen como atajos compatibles.
+- Para los atajos, la ventana de scrcpy debe tener el foco.
+- MOD = Alt izquierdo.
+
+CONTROLES CONSERVADOS
+Clic izquierdo                  AF puntual en esa zona.
+Shift + clic izquierdo          Medicion AE en esa zona.
+Alt + Izquierda / Derecha       Enfoque manual lejos / cerca.
+Alt + Shift + Izq. / Der.       ISO bajar / subir.
+Alt + Shift + Abajo / Arriba    Obturacion mas corta / mas larga.
+Alt + RePag / AvPag             EV subir / bajar.
+Alt + A                         Volver a autofocus.
+Alt + Shift + A                 Volver a exposicion automatica.
+Alt + K                         Fijar enfoque manual actual.
+Alt + L                         Activar/desactivar bloqueo AE.
+Alt + Shift + L                 Activar/desactivar bloqueo AWB.
+Alt + M                         Modo AF siguiente.
+Alt + Shift + M                 Modo AF anterior.
+Alt + H                         Capacidades y valores Camera2.
+Alt + 0                         Reset automatico de foco/exposicion/EV/locks.
+Alt + Arriba / Abajo            Zoom.
+Alt + T / Alt + Shift + T       Linterna encender / apagar.
+F1                              Ayuda de controles en consola.
+F11                             Pantalla completa.
+
+ALIASES V8.1 CONSERVADOS
+Alt + F / Alt + Shift + F       Enfoque mas cerca / mas lejos.
+Alt + I / Alt + Shift + I       ISO subir / bajar.
+Alt + E / Alt + Shift + E       Obturacion mas larga / mas corta.
+
+AR 2D
+Alt + Y                         Siguiente overlay.
+Alt + Shift + Y                 Overlay anterior.
+Alt + Shift + 1..9              OFF, lentes, bigote, mascara, halo,
+                                 rubor, corazones, neon, corona.
+
+NOTAS
+- Los ajustes se aplican solo si Camera2 los reporta como compatibles.
+- ISO y obturacion manual desactivan AE hasta Alt+Shift+A o Alt+0.
+- EV requiere exposicion automatica.
+- Click AF no cambia la exposicion.
+- Shift+click AE vuelve la exposicion a automatico sin cambiar manualmente el foco.
+- Los overlays AR son 2D y se dibujan en el cliente; no hacen tracking facial.
+- No usar --camera-high-speed para controles manuales.
+- No mezclar scrcpy.exe, DLL ni scrcpy-server de otras versiones.
+
+PERFIL RECOMENDADO
+scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps

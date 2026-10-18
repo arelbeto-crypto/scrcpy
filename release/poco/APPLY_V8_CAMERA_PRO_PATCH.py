@@ -28,8 +28,8 @@ edit("app/src/control_msg.h", [
 ])
 edit("app/src/control_msg.c", [
     ("case SC_CONTROL_MSG_TYPE_CAMERA_PRO:\n            buf[1]",
-     "        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n",
-     "        case SC_CONTROL_MSG_TYPE_CAMERA_PRO:\n            buf[1] = msg->camera_pro.command;\n            buf[2] = (uint8_t) msg->camera_pro.direction;\n            return 3;\n        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n"),
+     "        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n            sc_write16be(&buf[1]",
+     "        case SC_CONTROL_MSG_TYPE_CAMERA_PRO:\n            buf[1] = msg->camera_pro.command;\n            buf[2] = (uint8_t) msg->camera_pro.direction;\n            return 3;\n        case SC_CONTROL_MSG_TYPE_RESIZE_DISPLAY:\n            sc_write16be(&buf[1]"),
     ("LOG_CMSG(\"POCO Camera2 pro",
      "        case SC_CONTROL_MSG_TYPE_SCAN_FILE:\n            LOG_CMSG(",
      "        case SC_CONTROL_MSG_TYPE_CAMERA_PRO:\n            LOG_CMSG(\"POCO Camera2 pro command %d direction %d\",\n                     msg->camera_pro.command, msg->camera_pro.direction);\n            break;\n        case SC_CONTROL_MSG_TYPE_SCAN_FILE:\n            LOG_CMSG("),

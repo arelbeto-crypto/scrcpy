@@ -55,6 +55,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.Deflater;
 
 public final class VisionService extends Service {
@@ -75,6 +76,7 @@ public final class VisionService extends Service {
     private static final int MSG_SESSION = 2;
     private static final int MSG_VIDEO = 3;
     private static final int MSG_MASK = 16;
+    private static final int MSG_FACE = 17;
 
     private static final int FLAG_CONFIG = 1;
     private static final int MAX_MESSAGE = 16 * 1024 * 1024;
@@ -83,7 +85,8 @@ public final class VisionService extends Service {
     private static volatile String requestedHost = "";
 
     private final AtomicBoolean running = new AtomicBoolean();
-    private final AtomicBoolean inferenceBusy = new AtomicBoolean();
+    private final AtomicBoolean segmentationBusy = new AtomicBoolean();
+    private final AtomicBoolean faceBusy = new AtomicBoolean();
 
     private final Object decoderLock = new Object();
     private final Object outputLock = new Object();
@@ -108,6 +111,9 @@ public final class VisionService extends Service {
     private long fpsWindowStartMs;
     private int fpsWindowFrames;
     private float inferenceFps;
+    private long faceFpsWindowStartMs;
+    private int faceFpsWindowFrames;
+    private float faceFps;
 
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
@@ -136,7 +142,7 @@ public final class VisionService extends Service {
                         .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
                         .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
                         .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-                        .setMinFaceSize(0.10f)
+                        .setMinFaceSize(0.08f)
                         .enableTracking()
                         .build();
         faceDetector = FaceDetection.getClient(faceOptions);
@@ -166,6 +172,7 @@ public final class VisionService extends Service {
         multicastLock.acquire();
 
         fpsWindowStartMs = SystemClock.elapsedRealtime();
+        faceFpsWindowStartMs = fpsWindowStartMs;
         status = "Servicio listo. Esperando anuncio del POCO...";
     }
 
@@ -195,7 +202,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.4 por Wi-Fi...";
+                status = "Buscando POCO V8.5 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -355,7 +362,7 @@ public final class VisionService extends Service {
 
             try {
                 imageReader = ImageReader.newInstance(width, height,
-                        ImageFormat.YUV_420_888, 3);
+                        ImageFormat.YUV_420_888, 4);
                 imageReader.setOnImageAvailableListener(this::onImageAvailable, imageHandler);
 
                 MediaFormat format = MediaFormat.createVideoFormat(
@@ -460,7 +467,10 @@ public final class VisionService extends Service {
         if (image == null) {
             return;
         }
-        if (!inferenceBusy.compareAndSet(false, true)) {
+
+        boolean doFace = faceBusy.compareAndSet(false, true);
+        boolean doSegmentation = segmentationBusy.compareAndSet(false, true);
+        if (!doFace && !doSegmentation) {
             image.close();
             return;
         }
@@ -468,42 +478,110 @@ public final class VisionService extends Service {
         final long startedMs = SystemClock.elapsedRealtime();
         final int imageWidth = image.getWidth();
         final int imageHeight = image.getHeight();
+        final AtomicInteger pending = new AtomicInteger((doFace ? 1 : 0) + (doSegmentation ? 1 : 0));
 
         final InputImage input;
         try {
             input = InputImage.fromMediaImage(image, 0);
         } catch (RuntimeException e) {
+            if (doFace) faceBusy.set(false);
+            if (doSegmentation) segmentationBusy.set(false);
             image.close();
-            inferenceBusy.set(false);
             return;
         }
 
-        Task<SegmentationMask> segmentationTask = segmenter.process(input);
-        Task<List<Face>> faceTask = faceDetector.process(input);
+        if (doFace) {
+            try {
+                faceDetector.process(input)
+                        .addOnCompleteListener(inferenceExecutor, task -> {
+                            try {
+                                List<Face> faces = task.isSuccessful() ? task.getResult() : null;
+                                sendFaceResult(faces, imageWidth, imageHeight, startedMs);
+                            } catch (RuntimeException e) {
+                                status = "Tracking: " + e.getMessage();
+                            } finally {
+                                faceBusy.set(false);
+                                if (pending.decrementAndGet() == 0) {
+                                    image.close();
+                                }
+                            }
+                        });
+            } catch (RuntimeException e) {
+                faceBusy.set(false);
+                if (pending.decrementAndGet() == 0) {
+                    image.close();
+                }
+            }
+        }
 
-        Tasks.whenAllComplete(segmentationTask, faceTask)
-                .addOnCompleteListener(inferenceExecutor, ignored -> {
-                    try {
-                        SegmentationMask mask = segmentationTask.isSuccessful()
-                                ? segmentationTask.getResult() : null;
-                        List<Face> faces = faceTask.isSuccessful()
-                                ? faceTask.getResult() : null;
-                        if (mask != null) {
-                            sendVisionResult(mask, faces, imageWidth, imageHeight,
-                                    startedMs);
-                        }
-                    } catch (RuntimeException e) {
-                        status = "Inferencia: " + e.getMessage();
-                    } finally {
-                        image.close();
-                        inferenceBusy.set(false);
-                    }
-                });
+        if (doSegmentation) {
+            try {
+                segmenter.process(input)
+                        .addOnCompleteListener(inferenceExecutor, task -> {
+                            try {
+                                SegmentationMask mask = task.isSuccessful() ? task.getResult() : null;
+                                if (mask != null) {
+                                    sendMaskResult(mask, startedMs);
+                                }
+                            } catch (RuntimeException e) {
+                                status = "Segmentacion: " + e.getMessage();
+                            } finally {
+                                segmentationBusy.set(false);
+                                if (pending.decrementAndGet() == 0) {
+                                    image.close();
+                                }
+                            }
+                        });
+            } catch (RuntimeException e) {
+                segmentationBusy.set(false);
+                if (pending.decrementAndGet() == 0) {
+                    image.close();
+                }
+            }
+        }
     }
 
-    private void sendVisionResult(SegmentationMask mask, List<Face> faces,
-                                  int imageWidth, int imageHeight,
-                                  long startedMs) {
+    private void sendFaceResult(List<Face> faces, int imageWidth, int imageHeight,
+                                long startedMs) {
+        FaceData face = FaceData.NONE;
+        long now = SystemClock.elapsedRealtime();
+        int latencyMs = (int) Math.min(Integer.MAX_VALUE, now - startedMs);
+        updateFaceFps(now);
+
+        DataOutputStream out = activeOut;
+        if (out == null) {
+            return;
+        }
+
+        long ptsUs = System.nanoTime() / 1000L;
+        synchronized (outputLock) {
+            try {
+                int bodySize = 8 + 4 + 4 + 10 * 4;
+                out.writeInt(MAGIC);
+                out.writeByte(MSG_FACE);
+                out.writeInt(bodySize);
+                out.writeLong(ptsUs);
+                out.writeFloat(faceFps);
+                out.writeInt(latencyMs);
+
+                out.writeFloat(face.x);
+                out.writeFloat(face.y);
+                out.writeFloat(face.w);
+                out.writeFloat(face.h);
+                out.writeFloat(face.leftEyeX);
+                out.writeFloat(face.leftEyeY);
+                out.writeFloat(face.rightEyeX);
+                out.writeFloat(face.rightEyeY);
+                out.writeFloat(face.mouthX);
+                out.writeFloat(face.mouthY);
+                out.flush();
+            } catch (IOException e) {
+                closeQuietly(activeSocket);
+            }
+        }
+    }
+
+    private void sendMaskResult(SegmentationMask mask, long startedMs) {
         int maskWidth = mask.getWidth();
         int maskHeight = mask.getHeight();
         int count = maskWidth * maskHeight;
@@ -564,9 +642,8 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "Coprocesando: %.1f fps | %d ms | mask %dx%d | %s",
-                        inferenceFps, latencyMs, maskWidth, maskHeight,
-                        face.w > 0 ? "rostro OK" : "sin rostro");
+                        "V8.5: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);
             }
@@ -580,6 +657,16 @@ public final class VisionService extends Service {
             inferenceFps = fpsWindowFrames * 1000f / elapsed;
             fpsWindowFrames = 0;
             fpsWindowStartMs = nowMs;
+        }
+    }
+
+    private void updateFaceFps(long nowMs) {
+        ++faceFpsWindowFrames;
+        long elapsed = nowMs - faceFpsWindowStartMs;
+        if (elapsed >= 1000) {
+            faceFps = faceFpsWindowFrames * 1000f / elapsed;
+            faceFpsWindowFrames = 0;
+            faceFpsWindowStartMs = nowMs;
         }
     }
 
@@ -696,7 +783,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.4")
+                .setContentTitle("Redmi Vision Coprocessor V8.5")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)

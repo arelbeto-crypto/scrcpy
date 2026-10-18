@@ -53,6 +53,8 @@ jobs:
           grep -q 'proUpdateSmartZoom' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'PRO_SCENE' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'PRO_ZOOM_PRESET' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'proResetSceneProcessing' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'deadZone' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
       - uses: actions/setup-java@v5
         with:
           distribution: zulu

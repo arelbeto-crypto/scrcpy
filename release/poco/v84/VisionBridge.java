@@ -79,7 +79,7 @@ public final class VisionBridge implements Closeable {
         beaconThread.setDaemon(true);
         beaconThread.start();
 
-        Ln.i("POCO V8.4 Vision Bridge: waiting for Redmi coprocessor on TCP " + TCP_PORT);
+        Ln.i("POCO V8.5 Vision Bridge: waiting for Redmi coprocessor on TCP " + TCP_PORT);
     }
 
     public boolean isRunning() {
@@ -250,8 +250,6 @@ public final class VisionBridge implements Closeable {
         }
 
         visionState.updateMask(mask, maskWidth, maskHeight, ptsUs, fps, latencyMs);
-        visionState.updateRemoteFace(x, y, w, h, leftEyeX, leftEyeY,
-                                     rightEyeX, rightEyeY, mouthX, mouthY);
     }
 
     private void readFace(DataInputStream in, int payloadSize) throws IOException {
@@ -280,11 +278,7 @@ public final class VisionBridge implements Closeable {
 
         visionState.updateRemoteFace(x, y, w, h, leftEyeX, leftEyeY,
                                      rightEyeX, rightEyeY, mouthX, mouthY);
-        // Reuse the status fields so Alt+J reflects the fast tracker rate.
-        RemoteVisionState.MaskFrame mask = visionState.getFreshMask();
-        if (mask != null) {
-            visionState.updateMask(mask.mask, mask.width, mask.height, mask.ptsUs, fps, latencyMs);
-        }
+        visionState.updateRemoteStats(fps, latencyMs);
     }
 
     private static byte[] inflate(byte[] compressed, int expected) throws IOException {

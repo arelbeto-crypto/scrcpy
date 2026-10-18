@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""POCO V8.1: interactive Camera2 manual focus, ISO and shutter via control socket.
+"""POCO V8.2: Camera2 controls for scrcpy 5.0.1, preserving previous aliases.
 Applies to clean upstream scrcpy 5.0.1 after APPLY_V8_AR_PATCH.py.
-The message type is appended as #23 to preserve all upstream protocol IDs.
+Message type #23 remains compatible with V8.1.
 """
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,22 +57,62 @@ camera_zoom_in(struct sc_input_manager *im) {"""),
     ("POCO Camera2: do not consume ISO hotkey in FPS shortcut",
      "            case SDLK_I:\n                if (video && !shift && !repeat && down) {\n                    switch_fps_counter_state(im);\n                }\n                return;",
      "            case SDLK_I:\n                if (im->camera) break; // POCO Camera2: do not consume ISO hotkey in FPS shortcut\n                if (video && !shift && !repeat && down) {\n                    switch_fps_counter_state(im);\n                }\n                return;"),
+    ("POCO Camera2: do not consume camera arrows in rotation shortcuts",
+     "            case SDLK_DOWN:\n                // Only capture if shift is set\n",
+     "            case SDLK_DOWN:\n                if (im->camera) break; // POCO Camera2 camera shortcut\n                // Only capture if shift is set\n"),
+    ("POCO Camera2: do not consume camera up arrow in rotation shortcuts",
+     "            case SDLK_UP:\n                // Only capture if shift is set\n",
+     "            case SDLK_UP:\n                if (im->camera) break; // POCO Camera2 camera shortcut\n                // Only capture if shift is set\n"),
+    ("POCO Camera2: do not consume camera left arrow in rotation shortcuts",
+     "            case SDLK_LEFT:\n                if (video && !repeat && down) {\n",
+     "            case SDLK_LEFT:\n                if (im->camera) break; // POCO Camera2 camera shortcut\n                if (video && !repeat && down) {\n"),
+    ("POCO Camera2: do not consume camera right arrow in rotation shortcuts",
+     "            case SDLK_RIGHT:\n                if (video && !repeat && down) {\n",
+     "            case SDLK_RIGHT:\n                if (im->camera) break; // POCO Camera2 camera shortcut\n                if (video && !repeat && down) {\n"),
     ("POCO V8.1 Camera2 manual",
      "        if (control && im->camera) {\n            switch (sdl_keycode) {\n                case SDLK_T:",
      """        if (control && im->camera) {
             switch (sdl_keycode) {
-                // POCO V8.1 Camera2 manual (only in camera mode)
-                case SDLK_F: // focus: +near/-far
+                // POCO V8.2: keep old camera controls plus V8.1 aliases.
+                case SDLK_LEFT:
+                case SDLK_RIGHT:
+                    if (down && !paused) camera_pro_control(im, shift ? 1 : 0, sdl_keycode == SDLK_RIGHT ? 1 : -1);
+                    return;
+                case SDLK_UP:
+                case SDLK_DOWN:
+                    if (shift) {
+                        if (down && !paused) camera_pro_control(im, 2, sdl_keycode == SDLK_UP ? 1 : -1);
+                    } else if (down && !paused) {
+                        if (sdl_keycode == SDLK_UP) camera_zoom_in(im); else camera_zoom_out(im);
+                    }
+                    return;
+                case SDLK_PAGEUP:
+                case SDLK_PAGEDOWN:
+                    if (down && !paused) camera_pro_control(im, 9, sdl_keycode == SDLK_PAGEUP ? 1 : -1);
+                    return;
+                case SDLK_F: // alias focus +near / Shift=far
                     if (down && !repeat && !paused) camera_pro_control(im, 0, shift ? -1 : 1);
                     return;
-                case SDLK_I: // ISO
+                case SDLK_I: // alias ISO + / Shift=-
                     if (down && !repeat && !paused) camera_pro_control(im, 1, shift ? -1 : 1);
                     return;
-                case SDLK_E: // exposure
+                case SDLK_E: // alias shutter longer / Shift=shorter
                     if (down && !repeat && !paused) camera_pro_control(im, 2, shift ? -1 : 1);
                     return;
-                case SDLK_A: // restore auto
-                    if (down && !repeat && !paused) camera_pro_control(im, 3, 0);
+                case SDLK_A:
+                    if (down && !repeat && !paused) camera_pro_control(im, shift ? 5 : 3, 0);
+                    return;
+                case SDLK_K:
+                    if (down && !repeat && !paused) camera_pro_control(im, 6, 0);
+                    return;
+                case SDLK_L:
+                    if (down && !repeat && !paused) camera_pro_control(im, shift ? 8 : 7, 0);
+                    return;
+                case SDLK_M:
+                    if (down && !repeat && !paused) camera_pro_control(im, 10, shift ? -1 : 1);
+                    return;
+                case SDLK_0:
+                    if (down && !repeat && !paused) camera_pro_control(im, 11, 0);
                     return;
                 case SDLK_H: // capabilities, state
                     if (down && !repeat && !paused) camera_pro_control(im, 4, 0);
@@ -111,11 +151,22 @@ CAMERA_API = r'''
     private int proIso;
     private long proExposureNs;
     private float proFocus = -1.0f;
+    private int proEv;
+    private boolean proAeLock;
+    private boolean proAwbLock;
+    private int proAfMode = -1;
     private static final int PRO_FOCUS = 0;
     private static final int PRO_ISO = 1;
     private static final int PRO_EXPOSURE = 2;
-    private static final int PRO_AUTO = 3;
+    private static final int PRO_AUTO_FOCUS = 3;
     private static final int PRO_INFO = 4;
+    private static final int PRO_AUTO_EXPOSURE = 5;
+    private static final int PRO_FOCUS_LOCK = 6;
+    private static final int PRO_AE_LOCK = 7;
+    private static final int PRO_AWB_LOCK = 8;
+    private static final int PRO_EV = 9;
+    private static final int PRO_AF_MODE = 10;
+    private static final int PRO_RESET_AUTO = 11;
 
     private static boolean proHas(int[] values, int candidate) {
         if (values == null) return false;

@@ -720,8 +720,8 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);",
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);\n                    proCharacteristics = characteristics;"),
     ("POCO V8.3 manual zoom override",
-     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {",
-     "    private void zoom(boolean in) {\n        proSmartZoom = false; // POCO V8.3 manual zoom override\n        cameraHandler.post(() -> {"),
+     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();",
+     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();\n            proSmartZoom = false; // POCO V8.3 manual zoom override"),
 
     ("proUpdateMeasurements(result);",
      "            @Override\n            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {",

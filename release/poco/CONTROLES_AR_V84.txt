@@ -1,0 +1,101 @@
+POCO V8.4 | REDMI NOTE 10 PRO COMO COPROCESADOR DE VISION
+
+ARQUITECTURA
+POCO M8 Pro 5G
+  Camera2 -> OpenGL ES -> MediaCodec H.264 -> Acer
+       |          ^
+       |          |
+       +-- H.264 Wi-Fi --> Redmi Note 10 Pro
+                           MediaCodec hardware
+                           ML Kit Selfie Segmentation
+                           ML Kit Face Detection
+                           |
+                           +-- mask 256x256 + landmarks --> POCO
+                                                        OpenGL ES bokeh + AR
+
+La Acer NO calcula segmentacion, tracking, bokeh ni AR.
+La Acer solamente recibe/decodifica el H.264 final con --hwdec=disabled.
+
+REDMI
+App: RedmiVisionCoprocessor.apk
+Paquete: com.poco.visioncoprocessor
+
+Los modelos de Selfie Segmentation y Face Detection van incluidos en el APK.
+Despues de instalar no dependen de descargar el modelo desde Play Services.
+
+CONEXION
+1. POCO y Redmi en la misma red Wi-Fi, preferentemente 5 GHz.
+2. Inicia la camara V8.4 en el POCO desde la Acer.
+3. Abre Redmi Vision Coprocessor en el Redmi.
+4. Pulsa "Iniciar / autodetectar POCO".
+5. El POCO anuncia automaticamente el servicio por UDP 48764.
+6. El Redmi conecta por TCP 48765.
+7. Si el broadcast de la red esta bloqueado, escribe manualmente la IP del POCO.
+
+TRANSPORTE
+- POCO -> Redmi: copia del H.264 ya producido por MediaCodec.
+- Redmi -> POCO: mascara de segmentacion 8-bit comprimida + rostro/ojos/boca.
+- No se manda video procesado de regreso.
+- El POCO hace la composicion final en su GPU.
+- Si el Redmi se desconecta, la camara principal continua funcionando.
+
+CONTROLES V8.4
+Alt + V                         Bokeh ON/OFF.
+Alt + Shift + V                 Intensidad bokeh.
+Alt + J                         Estado del coprocesador en consola.
+Alt + Y                         AR tracked siguiente.
+Alt + Shift + Y                 AR tracked anterior.
+Alt + Shift + 1..9              AR directo OFF/lentes/bigote/mascara/halo/
+                                rubor/corazones/neon/corona.
+
+CONTROLES CONSERVADOS
+Clic                            AF puntual.
+Shift + clic                    AE puntual.
+Alt + Izq./Der.                 Foco manual.
+Alt + Shift + Izq./Der.         ISO.
+Alt + Shift + Abajo/Arriba      Obturacion.
+Alt + RePag/AvPag               EV.
+Alt + A                         Autofocus.
+Alt + Shift + A                 Exposicion automatica.
+Alt + K                         Bloqueo de foco.
+Alt + L                         Bloqueo AE.
+Alt + Shift + L                 Bloqueo AWB.
+Alt + M / Alt + Shift + M       Modo AF.
+Alt + 0                         Reset automatico.
+Alt + Arriba/Abajo              Zoom manual.
+Alt + Ctrl + 1..5               Zoom 1x/1.5x/2x/3x/5x.
+Alt + S                         Smart Zoom ON/OFF.
+Alt + Shift + S                 Smart Zoom Wide/Medium/Close.
+Alt + 1..9                      Escenas.
+Alt + F/I/E                     Alias foco/ISO/obturacion.
+Alt + T                         Linterna.
+Alt + H                         Camera2 info.
+F1                              Ayuda.
+F11                             Pantalla completa.
+
+BOKEH
+El Redmi calcula una mascara de persona en STREAM_MODE y devuelve la mascara
+raw del modelo. El POCO la sube como textura de baja resolucion y usa un shader
+OpenGL ES de una sola pasada. El fondo usa blur de 9 muestras y la persona
+permanece nitida. Una mascara vieja se invalida automaticamente.
+
+TRACKING AR
+El Redmi devuelve bounding box + ojos + boca. El POCO dibuja los overlays en
+su shader OpenGL. Si el Redmi no tiene un rostro reciente, Camera2 del POCO
+sirve como fallback ligero para posicionar el efecto.
+
+RENDIMIENTO
+- El bridge nunca bloquea el encoder principal.
+- Si el Redmi no alcanza el flujo, se desconecta/reconecta en lugar de frenar
+  la camara.
+- H.264 de camara usa I-frame cada 2 s para reconexion rapida del coprocesador.
+- El filtro OpenGL se ejecuta en el POCO; Windows no ejecuta shaders de efectos.
+- La mascara se actualiza solo cuando llega una generacion nueva.
+- El Redmi descarta frames de inferencia si todavia procesa el anterior.
+
+PUERTOS
+UDP 48764  descubrimiento automatico.
+TCP 48765  H.264 + resultados de vision.
+
+PERFIL RECOMENDADO
+scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps

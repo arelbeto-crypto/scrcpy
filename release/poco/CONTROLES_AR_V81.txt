@@ -1,0 +1,30 @@
+POCO V8.1 | scrcpy 5.0.1 + AR 2D + controles Camera2 en vivo
+USO: Ejecutar POCO_V8_MENU.bat, seleccionar camara ID0 o ID3.
+Para atajos debe estar enfocada la ventana de scrcpy. MOD=Alt izquierdo.
+
+CONTROLES MANUALES (sobre imagen de camara, sin root):
+Alt+F / Alt+Shift+F   enfoque mas cerca / mas lejos (dioptrias)
+Alt+I / Alt+Shift+I   subir/bajar sensibilidad ISO (25% por paso)
+Alt+E / Alt+Shift+E   aumentar/reducir tiempo de exposicion (25% por paso)
+Alt+A                 volver a enfoque/exposicion automatica
+Alt+H                 datos de capacidades, estado y rangos (consola)
+Alt+T                 linterna
+Alt+Arriba/Abajo      zoom
+
+OVERLAYS AR ESTATICOS (solo pantalla del cliente):
+Alt+Y                 siguiente filtro AR
+Alt+Shift+Y           filtro AR anterior
+Alt+Shift+1..9        apagado, lentes, bigote, mascara, halo,
+                      rubor, corazones, neon, corona (respectivamente)
+
+NOTAS:
+- El modo ISO/manual apaga AE de Camera2 y ajusta ISO y obturador conjuntamente.
+- El enfoque manual desactiva AF de Camera2.
+- No todas las camaras admiten todos estos ajustes. Consulte Alt+H.
+- En modo camera-high-speed los ajustes Camera2 manuales se desactivan.
+- Modos automaticos/RAW distintos de los anteriores no se incluyen.
+- Los overlays AR son dibujos 2D fijos; no hacen seguimiento facial.
+- El contador FPS con Alt+I no se activa en modo camara (tecla destinada a ISO).
+- F11 permite pantalla completa; en camara Alt+F se usa para enfoque.
+- No mezcle DLL, scrcpy.exe o scrcpy-server entre versiones.
+- El cambio se ha implementado en el protocolo del cliente y del servidor.

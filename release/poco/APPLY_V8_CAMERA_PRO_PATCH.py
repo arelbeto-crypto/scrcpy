@@ -174,10 +174,17 @@ CAMERA_API = r'''
                     proExposureNs = 0;
                     proFocus = -1;
                     requestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-                    requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
-                    requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, null);
-                    requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, null);
-                    requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+                    int[] afModes = proCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+                    requestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                        proHas(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                          ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                          : (proHas(afModes, CaptureRequest.CONTROL_AF_MODE_AUTO)
+                            ? CaptureRequest.CONTROL_AF_MODE_AUTO : CaptureRequest.CONTROL_AF_MODE_OFF));
+                    if (proManualSensor()) {
+                        requestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, null);
+                        requestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, null);
+                    }
+                    if (proManualFocus()) requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
                     Ln.i("POCO Camera2: focus, ISO and exposure returned to auto");
                 } else if (command == PRO_FOCUS) {
                     if (!proManualFocus()) {

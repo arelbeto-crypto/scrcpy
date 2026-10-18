@@ -141,6 +141,29 @@ camera_zoom_in(struct sc_input_manager *im) {"""),
                     if (down && !repeat && !paused) camera_pro_control(im, 4, 0);
                     return;
                 case SDLK_T:"""),
+    ("POCO V8.3 camera zoom cases consolidated",
+     """                case SDLK_T:
+                    if (!repeat && down) {
+                        camera_set_torch(im, !shift);
+                    }
+                    return;
+                case SDLK_DOWN:
+                    if (!shift && down && !paused) {
+                        // forward repeated events
+                        camera_zoom_out(im);
+                    }
+                    return;
+                case SDLK_UP:
+                    if (!shift && down && !paused) {
+                        // forward repeated events
+                        camera_zoom_in(im);
+                    }
+                    return;""",
+     """                case SDLK_T:
+                    if (!repeat && down) {
+                        camera_set_torch(im, !shift);
+                    }
+                    return;"""),
 ])
 
 edit("app/src/control_msg.h", [

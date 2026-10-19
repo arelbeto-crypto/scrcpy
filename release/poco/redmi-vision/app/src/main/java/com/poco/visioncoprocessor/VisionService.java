@@ -109,6 +109,7 @@ public final class VisionService extends Service {
     private long fpsWindowStartMs;
     private int fpsWindowFrames;
     private float inferenceFps;
+    private long lastSegmentationStartMs;
     private long faceFpsWindowStartMs;
     private int faceFpsWindowFrames;
     private float faceFps;
@@ -196,7 +197,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.6 por Wi-Fi...";
+                status = "Buscando POCO V8.6.1 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -307,7 +308,7 @@ public final class VisionService extends Service {
             throw new IOException("Version de protocolo no compatible: " + protocol);
         }
         if (codecId != H264_CODEC_ID) {
-            throw new IOException("El coprocesador V8.6 requiere H.264");
+            throw new IOException("El coprocesador V8.6.1 requiere H.264");
         }
         if (width > 0 && height > 0) {
             streamWidth = width;
@@ -552,7 +553,15 @@ public final class VisionService extends Service {
 
     private void processDecodedImage(Image image) {
         boolean doFace = faceBusy.compareAndSet(false, true);
-        boolean doSegmentation = segmentationBusy.compareAndSet(false, true);
+
+        long nowMs = SystemClock.elapsedRealtime();
+        boolean segmentationDue = nowMs - lastSegmentationStartMs >= 80;
+        boolean doSegmentation = segmentationDue
+                && segmentationBusy.compareAndSet(false, true);
+        if (doSegmentation) {
+            lastSegmentationStartMs = nowMs;
+        }
+
         if (!doFace && !doSegmentation) {
             return;
         }
@@ -796,7 +805,7 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "V8.6: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        "V8.6.1.1: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
                         faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);
@@ -934,7 +943,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.6")
+                .setContentTitle("Redmi Vision Coprocessor V8.6.1")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)

@@ -111,7 +111,7 @@ jobs:
           retention-days: 90
 
   windows-package:
-    needs: build
+    needs: [build, android-runtime]
     runs-on: windows-latest
     timeout-minutes: 15
     steps:

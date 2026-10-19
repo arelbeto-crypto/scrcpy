@@ -85,6 +85,8 @@ public final class VisionService extends Service {
     private static final int MAX_MESSAGE = 16 * 1024 * 1024;
 
     private static volatile String status = "Detenido";
+    private static volatile String trackingError;
+    private static volatile String segmentationError;
     private static volatile String requestedHost = "";
 
     private final AtomicBoolean running = new AtomicBoolean();
@@ -128,12 +130,15 @@ public final class VisionService extends Service {
     private WifiManager.MulticastLock multicastLock;
 
     public static String getStatus() {
-        return status;
+        return status + (trackingError != null ? "\nTracking: " + trackingError : "")
+                + (segmentationError != null ? "\nSegmentacion: " + segmentationError : "");
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        trackingError = null;
+        segmentationError = null;
         createChannel();
         startForeground(NOTIFICATION_ID, buildNotification("Esperando POCO"));
 
@@ -198,7 +203,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.7 por Wi-Fi...";
+                status = "Buscando POCO V8.8 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -618,18 +623,24 @@ public final class VisionService extends Service {
                 faceDetector.process(input)
                         .addOnCompleteListener(inferenceExecutor, task -> {
                             try {
-                                List<FaceMesh> faces = task.isSuccessful() ? task.getResult() : null;
+                                if (!task.isSuccessful()) {
+                                    inferenceError(true, task.getException());
+                                    return;
+                                }
+                                trackingError = null;
+                                List<FaceMesh> faces = task.getResult();
                                 if (epoch == streamEpoch && output == activeOut && running.get()) {
                                     sendFaceResult(faces, width, height, startedMs, ptsUs, output);
                                 }
                             } catch (RuntimeException e) {
-                                status = "Tracking: " + e.getMessage();
+                                inferenceError(true, e);
                             } finally {
                                 faceBusy.set(false);
                                 releaseImage.run();
                             }
                         });
             } catch (RuntimeException e) {
+                inferenceError(true, e);
                 faceBusy.set(false);
                 releaseImage.run();
             }
@@ -640,22 +651,37 @@ public final class VisionService extends Service {
                 segmenter.process(input)
                         .addOnCompleteListener(inferenceExecutor, task -> {
                             try {
-                                SegmentationMask mask = task.isSuccessful() ? task.getResult() : null;
+                                if (!task.isSuccessful()) {
+                                    inferenceError(false, task.getException());
+                                    return;
+                                }
+                                segmentationError = null;
+                                SegmentationMask mask = task.getResult();
                                 if (mask != null && epoch == streamEpoch && output == activeOut && running.get()) {
                                     sendMaskResult(mask, startedMs, ptsUs, output);
                                 }
                             } catch (RuntimeException e) {
-                                status = "Segmentacion: " + e.getMessage();
+                                inferenceError(false, e);
                             } finally {
                                 segmentationBusy.set(false);
                                 releaseImage.run();
                             }
                         });
             } catch (RuntimeException e) {
+                inferenceError(false, e);
                 segmentationBusy.set(false);
                 releaseImage.run();
             }
         }
+    }
+
+    private static void inferenceError(boolean tracking, Exception error) {
+        String detail = error != null ? error.getClass().getSimpleName() + ": " + error.getMessage()
+                : "El modelo no pudo procesar la imagen";
+        String previous = tracking ? trackingError : segmentationError;
+        if (!detail.equals(previous)) android.util.Log.e("RedmiVision", detail, error);
+        if (tracking) trackingError = detail;
+        else segmentationError = detail;
     }
 
     private static Nv21Frame imageToNv21Downscaled(Image image, int maxWidth) {
@@ -838,7 +864,7 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "V8.7: malla 468 %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        "V8.8: malla 468 %.1f fps | mask %.1f fps | %d ms | %dx%d",
                         faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);
@@ -967,7 +993,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.7")
+                .setContentTitle("Redmi Vision Coprocessor V8.8")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)

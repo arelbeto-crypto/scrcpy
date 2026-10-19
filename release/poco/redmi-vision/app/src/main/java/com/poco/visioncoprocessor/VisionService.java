@@ -78,6 +78,7 @@ public final class VisionService extends Service {
     private static final int MSG_FACE = 17;
 
     private static final int FLAG_CONFIG = 1;
+    private static final int FLAG_KEY = 2;
     private static final int MAX_MESSAGE = 16 * 1024 * 1024;
 
     private static volatile String status = "Detenido";
@@ -106,6 +107,8 @@ public final class VisionService extends Service {
     private int decoderHeight;
     private byte[] pendingConfig;
     private boolean configQueued;
+    private boolean decoderNeedsKeyFrame = true;
+    private int decoderDroppedFrames;
 
     private long fpsWindowStartMs;
     private int fpsWindowFrames;
@@ -201,7 +204,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.5 por Wi-Fi...";
+                status = "Buscando POCO V8.5.1 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -312,7 +315,7 @@ public final class VisionService extends Service {
             throw new IOException("Version de protocolo no compatible: " + protocol);
         }
         if (codecId != H264_CODEC_ID) {
-            throw new IOException("El coprocesador V8.4 requiere H.264");
+            throw new IOException("El coprocesador V8.5.1 requiere H.264");
         }
         if (width > 0 && height > 0) {
             configureDecoder(width, height);
@@ -376,11 +379,12 @@ public final class VisionService extends Service {
                 decoderWidth = width;
                 decoderHeight = height;
                 configQueued = false;
+                decoderNeedsKeyFrame = true;
+                decoderDroppedFrames = 0;
 
                 if (pendingConfig != null) {
-                    queueInputLocked(pendingConfig, 0,
-                            MediaCodec.BUFFER_FLAG_CODEC_CONFIG);
-                    configQueued = true;
+                    configQueued = queueInputLocked(pendingConfig, 0,
+                            MediaCodec.BUFFER_FLAG_CODEC_CONFIG, true);
                 }
 
                 status = "POCO conectado: " + width + "x" + height
@@ -397,45 +401,100 @@ public final class VisionService extends Service {
             if (decoder == null) {
                 return;
             }
+
             drainDecoderLocked();
 
-            int codecFlags = (flags & FLAG_CONFIG) != 0
-                    ? MediaCodec.BUFFER_FLAG_CODEC_CONFIG : 0;
-            if (codecFlags != 0 && configQueued) {
+            boolean config = (flags & FLAG_CONFIG) != 0;
+            boolean keyFrame = (flags & FLAG_KEY) != 0;
+
+            if (config) {
+                pendingConfig = data;
+                if (!configQueued) {
+                    configQueued = queueInputLocked(data, ptsUs,
+                            MediaCodec.BUFFER_FLAG_CODEC_CONFIG, true);
+                }
                 return;
             }
-            queueInputLocked(data, ptsUs, codecFlags);
-            if (codecFlags != 0) {
-                configQueued = true;
+
+            if (decoderNeedsKeyFrame) {
+                if (!keyFrame) {
+                    return;
+                }
+
+                try {
+                    decoder.flush();
+                } catch (IllegalStateException e) {
+                    throw new IOException("Decoder no disponible al resincronizar", e);
+                }
+
+                configQueued = false;
+                if (pendingConfig != null) {
+                    configQueued = queueInputLocked(pendingConfig, 0,
+                            MediaCodec.BUFFER_FLAG_CODEC_CONFIG, true);
+                    if (!configQueued) {
+                        noteDecoderDrop("sin buffer para SPS/PPS");
+                        return;
+                    }
+                }
+            }
+
+            if (!queueInputLocked(data, ptsUs, 0, keyFrame)) {
+                // The coprocessor is analysis-only: dropping a GOP is much better
+                // than tearing down TCP and reconnecting every time MediaCodec is busy.
+                decoderNeedsKeyFrame = true;
+                noteDecoderDrop("decoder ocupado");
+                return;
+            }
+
+            if (keyFrame) {
+                decoderNeedsKeyFrame = false;
             }
             drainDecoderLocked();
         }
     }
 
-    private void queueInputLocked(byte[] data, long ptsUs, int flags)
-            throws IOException {
+    private boolean queueInputLocked(byte[] data, long ptsUs, int flags,
+                                     boolean important) throws IOException {
+        int timeoutUs = important ? 100_000 : 8_000;
         int index;
         try {
-            index = decoder.dequeueInputBuffer(20_000);
+            index = decoder.dequeueInputBuffer(timeoutUs);
         } catch (IllegalStateException e) {
             throw new IOException("Decoder no disponible", e);
         }
+
         if (index < 0) {
-            // One retry after draining output; never block the network forever.
             drainDecoderLocked();
-            index = decoder.dequeueInputBuffer(20_000);
+            try {
+                index = decoder.dequeueInputBuffer(timeoutUs);
+            } catch (IllegalStateException e) {
+                throw new IOException("Decoder no disponible", e);
+            }
         }
+
         if (index < 0) {
-            throw new IOException("Decoder H.264 saturado");
+            return false;
         }
 
         ByteBuffer buffer = decoder.getInputBuffer(index);
         if (buffer == null || buffer.capacity() < data.length) {
             throw new IOException("NAL H.264 excede el buffer del decoder");
         }
+
         buffer.clear();
         buffer.put(data);
-        decoder.queueInputBuffer(index, 0, data.length, ptsUs, flags);
+        try {
+            decoder.queueInputBuffer(index, 0, data.length, ptsUs, flags);
+        } catch (IllegalStateException e) {
+            throw new IOException("Decoder no disponible", e);
+        }
+        return true;
+    }
+
+    private void noteDecoderDrop(String reason) {
+        ++decoderDroppedFrames;
+        status = "POCO conectado. Vision activa | resincronizando video auxiliar | "
+                + reason + " | drops=" + decoderDroppedFrames;
     }
 
     private void drainDecoderLocked() {
@@ -542,7 +601,7 @@ public final class VisionService extends Service {
 
     private void sendFaceResult(List<Face> faces, int imageWidth, int imageHeight,
                                 long startedMs) {
-        FaceData face = FaceData.NONE;
+        FaceData face = selectFace(faces, imageWidth, imageHeight);
         long now = SystemClock.elapsedRealtime();
         int latencyMs = (int) Math.min(Integer.MAX_VALUE, now - startedMs);
         updateFaceFps(now);
@@ -766,6 +825,7 @@ public final class VisionService extends Service {
         decoderWidth = 0;
         decoderHeight = 0;
         configQueued = false;
+        decoderNeedsKeyFrame = true;
     }
 
     private void createChannel() {
@@ -782,7 +842,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.5")
+                .setContentTitle("Redmi Vision Coprocessor V8.5.1")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)

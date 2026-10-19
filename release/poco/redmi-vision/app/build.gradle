@@ -10,7 +10,7 @@ android {
         applicationId = 'com.poco.visioncoprocessor'
         minSdk = 23
         targetSdk = 33
-        versionCode = 851
+        versionCode = 8511
         versionName = '8.5.1'
     }
 

@@ -25,8 +25,12 @@ WIDTH, HEIGHT = 480, 562
 MAGIC = 0x50565231
 
 def adb(*args, check=True):
-    return subprocess.run(['adb', *args], check=check, text=True, timeout=30,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
+    try:
+        return subprocess.run(['adb', *args], check=check, text=True, timeout=30,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
+    except subprocess.CalledProcessError as exc:
+        print('ADB failure:', exc.stdout, file=sys.stderr, flush=True)
+        raise
 
 def tree():
     adb('shell', 'uiautomator', 'dump', '/sdcard/vision-smoke.xml')

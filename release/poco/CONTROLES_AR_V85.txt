@@ -1,4 +1,4 @@
-POCO V8.6 | BOKEH PULIDO + TRACKING DE BAJA LATENCIA + MASK FX
+POCO V8.6.1 | BOKEH PULIDO + TRACKING DE BAJA LATENCIA + MASK FX
 
 OBJETIVO
 - Acer = solo visor/decoder con --hwdec=disabled.
@@ -6,7 +6,7 @@ OBJETIVO
 - Redmi Note 10 Pro = segmentacion + tracking facial/landmarks.
 - El tracking ya no espera a que termine la segmentacion.
 
-CAMBIOS V8.6
+CAMBIOS V8.6.1
 
 TRACKING
 - Rostro y segmentacion se procesan de forma independiente en el Redmi.
@@ -79,14 +79,14 @@ PERFIL RECOMENDADO
 scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps
 
 
-CORRECCION V8.6
-- Los logs del bridge se identifican correctamente como V8.5.1.
+BASE ESTABLE V8.6
+- La rama estable se congelo en poco-v86-stable. Decoder, red y protocolo de V8.6 no se modifican en esta capa de pulido.
 - Si el decoder auxiliar del Redmi se satura, se descarta el GOP de analisis y se espera al siguiente keyframe sin cerrar TCP.
 - Si la cola Wi-Fi del POCO se llena, se limpia el backlog y se resincroniza en el siguiente keyframe.
 - El tracking facial envia de nuevo rostro, ojos y boca reales.
 
 
-DECODER YUV V8.6
+DECODER YUV V8.6 (BASE CONGELADA)
 - El Redmi ya no usa Surface + ImageReader para decodificar el H.264 auxiliar.
 - MediaCodec trabaja en modo buffer con YUV420 flexible.
 - Cada frame elegido se reduce a 640 px de ancho antes de ML Kit.
@@ -94,3 +94,17 @@ DECODER YUV V8.6
 - Un error del decoder auxiliar ya no derriba la conexion TCP.
 - Si el decoder necesita recuperarse, espera keyframe y continua conectado.
 - GOP de camara reducido a 1 segundo para recuperacion rapida.
+
+
+PULIDO V8.6.1
+- Audio forzado OFF en todos los arranques de camara: --no-audio.
+- Tracking facial priorizado sobre segmentacion: la mascara se limita a ~12.5 Hz si hace falta, rostro sigue libre.
+- Suavizado facial adaptativo nuevo: mas estable quieto y mas rapido durante movimiento.
+- Mascara temporal adaptativa: menos temblor sin arrastrar el borde cuando la persona se mueve.
+- AR anclado al eje real entre los ojos: rota y escala con la cara, no solo con un rectangulo.
+- Lentes, bigote, mascara, halo, rubor, corazones, neon y corona recalculados en coordenadas faciales.
+- Corazones ahora usan forma de corazon real en shader, no circulos.
+- Bokeh usa erosion+dilatacion de mascara para reducir halos de cabello/hombros.
+- Zoom manual tiene pasos mas finos.
+- Presets 1x/1.5x/2x/3x/5x conservan sus valores pero llegan mediante rampa suave.
+- Smart Zoom usa histeresis, limite de velocidad y espera mas tiempo antes de regresar a 1x.

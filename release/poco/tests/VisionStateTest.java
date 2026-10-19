@@ -32,6 +32,16 @@ public final class VisionStateTest {
         state.updateRemoteFace(.1f, .2f, .3f, .4f, .2f, .3f, .3f, .3f, .25f, .45f,
                 pts + 1, null, null);
         check(state.getFreshFace() == null, "A late face result must not resurrect a face after an explicit loss");
-        System.out.println("VisionStateTest: 6 behavior checks passed");
+        long beforeReset = System.nanoTime() / 1000 - 1;
+        state.resetTracking();
+        state.updateMask(new byte[] {1}, 1, 1, beforeReset, 10, 15);
+        check(state.getFreshMask() == null, "A prior-session mask in transit must not restore tracking after reset");
+        state.updateRemoteFace(.1f, .2f, .3f, .4f, .2f, .3f, .3f, .3f, .25f, .45f,
+                beforeReset, null, null);
+        check(state.getFreshFace() == null, "A prior-session face in transit must not restore tracking after reset");
+        long current = System.nanoTime() / 1000 + 1;
+        state.updateMask(new byte[] {1}, 1, 1, current, 10, 15);
+        check(state.getFreshMask() != null, "The new session must still accept current results");
+        System.out.println("VisionStateTest: 9 behavior checks passed");
     }
 }

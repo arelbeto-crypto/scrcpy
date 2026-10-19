@@ -169,6 +169,11 @@ public final class VisionCompositeOpenGLFilter implements OpenGLFilter {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
         GLES20.glUniform1i(texLoc, 0);
+        // Both sampler types must reference separate units even in the clean-analysis branch.
+        GLES20.glUniform1i(maskTexLoc, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTexture);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glUniformMatrix4fv(texMatrixLoc, 1, false, texMatrix, 0);
         GLES20.glUniformMatrix4fv(userMatrixLoc, 1, false, userMatrix, 0);
 
@@ -176,7 +181,6 @@ public final class VisionCompositeOpenGLFilter implements OpenGLFilter {
         boolean maskReady = uploadMaskIfNeeded();
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTexture);
-        GLES20.glUniform1i(maskTexLoc, 1);
         GLES20.glUniform1f(maskValidLoc, maskReady ? state.getMaskOpacity() : 0.0f);
         GLES20.glUniform1f(bokehStrengthLoc, state.isBokehEnabled() ? state.getBokehStrength() : 0f);
         GLES20.glUniform1i(backgroundLoc, state.getBackgroundMode());

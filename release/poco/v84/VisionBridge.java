@@ -55,7 +55,7 @@ public final class VisionBridge implements Closeable {
     private final Object clientLock = new Object();
     private final AtomicBoolean analysisBusy = new AtomicBoolean();
     private ExecutorService analysisExecutor;
-    private long lastAnalysisUs;
+    private volatile long lastAnalysisUs;
     private int[] analysisColors;
     private Bitmap analysisBitmap;
 
@@ -104,13 +104,16 @@ public final class VisionBridge implements Closeable {
     }
 
     public void onSession(int width, int height) {
-        this.width = width;
-        this.height = height;
-        visionState.resetTracking();
-        Client c = client;
-        if (c != null) {
-            c.resetForSession();
-            c.enqueue(Message.session(width, height));
+        synchronized (clientLock) {
+            this.width = width;
+            this.height = height;
+            visionState.resetTracking();
+            lastAnalysisUs = 0;
+            Client c = client;
+            if (c != null) {
+                c.resetForSession();
+                c.enqueue(Message.session(width, height));
+            }
         }
     }
 
@@ -169,6 +172,7 @@ public final class VisionBridge implements Closeable {
 
     public void offerRgbaFrame(byte[] rgba, int frameWidth, int frameHeight, long ptsUs) {
         final Client target = client;
+        final long generation = visionState.getSessionGeneration();
         ExecutorService executor = analysisExecutor;
         if (target == null || !target.rawAnalysis || executor == null) {
             analysisBusy.set(false);
@@ -177,7 +181,8 @@ public final class VisionBridge implements Closeable {
         try {
             executor.execute(() -> {
                 try {
-                    if (!target.alive.get() || target != client) return;
+                    if (!target.alive.get() || target != client || !visionState.isCurrentSource(ptsUs)
+                            || generation != visionState.getSessionGeneration()) return;
                     int count = frameWidth * frameHeight;
                     if (analysisColors == null || analysisColors.length != count) analysisColors = new int[count];
                     for (int y = 0; y < frameHeight; y++) {
@@ -196,9 +201,12 @@ public final class VisionBridge implements Closeable {
                     ByteArrayOutputStream bytes = new ByteArrayOutputStream(48 * 1024);
                     if (!analysisBitmap.compress(Bitmap.CompressFormat.JPEG, 88, bytes)) return;
                     // Fresh images replace queued work; never build an inference backlog.
-                    if (target == client && System.nanoTime() / 1000 - ptsUs < 250_000) {
-                        target.queue.removeIf(message -> message.type == MSG_ANALYSIS_JPEG);
-                        target.enqueue(new Message(MSG_ANALYSIS_JPEG, ptsUs, 0, bytes.toByteArray(), frameWidth, frameHeight));
+                    synchronized (clientLock) {
+                        if (target == client && generation == visionState.getSessionGeneration()
+                                && visionState.isCurrentSource(ptsUs) && System.nanoTime() / 1000 - ptsUs < 250_000) {
+                            target.removeQueued(MSG_ANALYSIS_JPEG);
+                            target.enqueue(new Message(MSG_ANALYSIS_JPEG, ptsUs, 0, bytes.toByteArray(), frameWidth, frameHeight));
+                        }
                     }
                 } catch (RuntimeException e) {
                     Ln.w("Vision analysis frame skipped: " + e.getMessage());
@@ -287,7 +295,7 @@ public final class VisionBridge implements Closeable {
         }
     }
 
-    private void readMask(DataInputStream in, int payloadSize, boolean sourceClock) throws IOException {
+    private void readMask(DataInputStream in, int payloadSize, Client sender, long generation) throws IOException {
         if (payloadSize < 8 + 4 + 4 + 4 + 4 + 10 * 4 + 1 + 4) {
             throw new IOException("Invalid Redmi mask payload");
         }
@@ -327,18 +335,26 @@ public final class VisionBridge implements Closeable {
             throw new IOException("Invalid Redmi mask compression");
         }
 
-        if (!sourceClock) ptsUs = System.nanoTime() / 1000 - Math.max(0, latencyMs) * 1000L;
-        visionState.updateMask(mask, maskWidth, maskHeight, ptsUs, fps, latencyMs);
+        if (!sender.sourceClock) ptsUs = System.nanoTime() / 1000 - Math.max(0, latencyMs) * 1000L;
+        synchronized (clientLock) {
+            if (sender == client && sender.alive.get() && generation == visionState.getSessionGeneration()) {
+                visionState.updateMask(mask, maskWidth, maskHeight, ptsUs, fps, latencyMs);
+            }
+        }
     }
 
-    private void readFace(DataInputStream in, int payloadSize, boolean sourceClock) throws IOException {
+    private void readFace(DataInputStream in, int payloadSize, Client sender, long generation) throws IOException {
         VisionFacePacket packet = VisionFacePacket.read(in, payloadSize);
         float[] f = packet.face;
-        long ptsUs = sourceClock ? packet.ptsUs
+        long ptsUs = sender.sourceClock ? packet.ptsUs
                 : System.nanoTime() / 1000 - Math.max(0, packet.latencyMs) * 1000L;
-        visionState.updateRemoteFace(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9],
-                ptsUs, packet.mesh, packet.triangles);
-        visionState.updateRemoteStats(packet.fps, packet.latencyMs);
+        synchronized (clientLock) {
+            if (sender == client && sender.alive.get() && generation == visionState.getSessionGeneration()) {
+                visionState.updateRemoteFace(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9],
+                        ptsUs, packet.mesh, packet.triangles);
+                visionState.updateRemoteStats(packet.fps, packet.latencyMs);
+            }
+        }
     }
 
     private static byte[] inflate(byte[] compressed, int expected) throws IOException {
@@ -443,6 +459,8 @@ public final class VisionBridge implements Closeable {
         private volatile boolean waitingKeyFrame = true;
         private volatile boolean rawAnalysis;
         private volatile boolean sourceClock;
+        private volatile Thread writerThread;
+        private volatile Thread readerThread;
 
         Client(Socket socket) throws IOException {
             this.socket = socket;
@@ -452,16 +470,25 @@ public final class VisionBridge implements Closeable {
 
         void start() {
             Thread writer = new Thread(this::writeLoop, "vision-writer");
+            writerThread = writer;
             writer.setDaemon(true);
             writer.start();
 
             Thread reader = new Thread(this::readLoop, "vision-reader");
+            readerThread = reader;
             reader.setDaemon(true);
             reader.start();
         }
 
         boolean enqueue(Message message) {
             return alive.get() && queue.offer(message);
+        }
+
+        void removeQueued(int type) {
+            // Collection.removeIf requires Android 24; this bridge also supports older servers.
+            for (Message message : queue) {
+                if (message.type == type) queue.remove(message);
+            }
         }
 
         boolean waitingForKeyFrame() {
@@ -499,7 +526,8 @@ public final class VisionBridge implements Closeable {
                     } else if (message.type == MSG_VIDEO) {
                         if (!rawAnalysis) writeVideo(message);
                     } else if (message.type == MSG_ANALYSIS_JPEG) {
-                        if (System.nanoTime() / 1000 - message.ptsUs < 250_000) writeAnalysis(message);
+                        if (visionState.isCurrentSource(message.ptsUs)
+                                && System.nanoTime() / 1000 - message.ptsUs < 250_000) writeAnalysis(message);
                     }
                 }
             } catch (InterruptedException e) {
@@ -526,15 +554,15 @@ public final class VisionBridge implements Closeable {
                         throw new IOException("Invalid Redmi message size");
                     }
                     if (type == MSG_MASK) {
-                        readMask(in, size, sourceClock);
+                        readMask(in, size, this, visionState.getSessionGeneration());
                     } else if (type == MSG_FACE) {
-                        readFace(in, size, sourceClock);
+                        readFace(in, size, this, visionState.getSessionGeneration());
                     } else if (type == MSG_CAPABILITIES) {
                         if (size != 4) throw new IOException("Invalid capabilities");
                         int capabilities = in.readInt();
                         sourceClock = (capabilities & 2) != 0;
                         rawAnalysis = (capabilities & 1) != 0;
-                        if (rawAnalysis) queue.removeIf(message -> message.type == MSG_VIDEO);
+                        if (rawAnalysis) removeQueued(MSG_VIDEO);
                     } else {
                         skipFully(in, size);
                     }
@@ -602,6 +630,10 @@ public final class VisionBridge implements Closeable {
             }
             closeQuietly(socket);
             queue.clear();
+            Thread writer = writerThread;
+            if (writer != null) writer.interrupt();
+            Thread reader = readerThread;
+            if (reader != null) reader.interrupt();
             detachClient(this);
         }
     }

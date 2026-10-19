@@ -21,6 +21,11 @@ Alt+G / Alt+Shift+G = siguiente/anterior fondo:
 Alt+J = diagnostico del coprocesador en consola.
 
 Usar el APK y scrcpy-server V8.7 juntos. La imagen para analizar se toma antes de los efectos.
+V8.7 se instala como "Redmi Vision 8.7" junto a V8.6.1; conserva su app y sus datos.
+El instalador detiene la version anterior antes de abrir V8.7. Si instalas el APK a mano,
+deten el servicio anterior: solo una version debe conectarse al POCO a la vez.
+Es una preview con firma de desarrollo. Una firma distinta puede impedir actualizar otra
+preview V8.7; el instalador informa el error y nunca desinstala automaticamente.
 Los resultados antiguos caducan; al perder el rostro las mascaras se ocultan.
 Los fondos requieren segmentacion del Redmi. La Acer sigue con --hwdec=disabled y --no-audio.
 La lectura GPU de analisis se limita a 640 px y como maximo unas 12 muestras/s; la vista de camara conserva su FPS configurado.

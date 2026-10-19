@@ -120,3 +120,35 @@ half_mask = bytes(channel for y in range(32) for x in range(32)
 assert render(mask=half_mask, x=20)[0] < 10, 'Bokeh must not bleed red foreground into blue background'
 assert api(gl, 'glGetError', U)() == 0, 'OpenGL error'
 print('shader_pixels: 8 GPU behavior checks passed')
+
+# Use an actual EGLImage-backed external camera texture for the first analysis draw.
+# Different sampler types cannot share unit 0, even when analysis_only skips mask sampling.
+external_fragment = shader(0x8B30, (base / 'composite.frag').read_text())
+program = api(gl, 'glCreateProgram', U)()
+attach(program, vertex); attach(program, external_fragment)
+api(gl, 'glLinkProgram', None, U)(program)
+api(gl, 'glGetProgramiv', None, U, U, P)(program, 0x8B82, C.byref(ok))
+assert ok.value, 'Native OES program linking'
+api(gl, 'glUseProgram', None, U)(program)
+create_image = C.CFUNCTYPE(P, P, P, U, P, P)(egl.eglGetProcAddress(b'eglCreateImageKHR'))
+image = create_image(display, context, 0x30B1, P(ids[0]), (I * 3)(0x30D2, 1, 0x3038))
+assert image, 'EGL image for the native external sampler'
+external = U(); api(gl, 'glGenTextures', None, I, P)(1, C.byref(external))
+active_texture(0x84C0); bind_texture(0x8D65, external)
+image_target = C.CFUNCTYPE(None, U, P)(egl.eglGetProcAddress(b'glEGLImageTargetTexture2DOES'))
+image_target(0x8D65, image)
+for param in [0x2801, 0x2800]: tex_param(0x8D65, param, 0x2600)
+for param in [0x2802, 0x2803]: tex_param(0x8D65, param, 0x812F)
+um4(loc('tex_matrix'), 1, 0, identity); um4(loc('user_matrix'), 1, 0, identity)
+for name, data in zip(['vertex_pos', 'tex_coords_in'], arrays):
+    index = get_attribute(program, name.encode()); enable_attribute(index)
+    attribute_pointer(index, 2, 0x1406, 0, 0, data)
+ui(loc('tex'), 0); ui(loc('analysis_only'), 1)
+draw(5, 0, 4)
+assert api(gl, 'glGetError', U)() == 0x0502, 'The default conflicting samplers must reproduce the first-draw error'
+ui(loc('mask_tex'), 1)
+draw(5, 0, 4)
+assert api(gl, 'glGetError', U)() == 0, 'First analysis draw must use separate sampler units'
+pixel = (C.c_ubyte * 4)(); read(17,16,1,1,0x1908,0x1401,pixel)
+assert tuple(pixel) == blue, 'First native OES analysis draw must contain clean camera pixels'
+print('shader_pixels: native OES first-draw regression and clean readback passed')

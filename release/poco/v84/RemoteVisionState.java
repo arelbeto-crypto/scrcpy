@@ -91,6 +91,8 @@ public final class RemoteVisionState {
     private volatile int remoteLatencyMs;
     private volatile long maskGeneration;
     private long lastFacePtsUs;
+    private volatile long sourceCutoffUs;
+    private volatile long sessionGeneration;
 
     private volatile boolean bokehEnabled = true;
     private volatile int bokehLevel = 2;
@@ -107,19 +109,25 @@ public final class RemoteVisionState {
     public synchronized void setConnected(boolean connected, String peer) {
         this.connected = connected;
         this.peer = peer != null ? peer : "-";
+        resetTracking();
         if (!connected) {
             remoteFps = 0;
             remoteLatencyMs = 0;
-            resetTracking();
         }
     }
 
     public synchronized void resetTracking() {
+        sourceCutoffUs = System.nanoTime() / 1000;
+        ++sessionGeneration;
         maskFrame = null;
         remoteFace = null;
         cameraFace = null;
         lastFacePtsUs = 0;
     }
+
+    public long getSessionGeneration() { return sessionGeneration; }
+
+    public boolean isCurrentSource(long ptsUs) { return ptsUs >= sourceCutoffUs; }
 
     private static boolean fresh(long ptsUs, long maxAgeNs) {
         long ageUs = System.nanoTime() / 1000 - ptsUs;
@@ -140,7 +148,7 @@ public final class RemoteVisionState {
     public synchronized void updateMask(byte[] mask, int width, int height, long ptsUs,
                            float fps, int latencyMs) {
         if (mask == null || width <= 0 || height <= 0 || width > 1024 || height > 1024
-                || mask.length != width * height || !fresh(ptsUs, MASK_MAX_AGE_NS)) {
+                || mask.length != width * height || !isCurrentSource(ptsUs) || !fresh(ptsUs, MASK_MAX_AGE_NS)) {
             return;
         }
         MaskFrame previous = maskFrame;
@@ -194,7 +202,7 @@ public final class RemoteVisionState {
     public synchronized void updateRemoteFace(float x, float y, float w, float h,
                                  float leftEyeX, float leftEyeY, float rightEyeX, float rightEyeY,
                                  float mouthX, float mouthY, long ptsUs, float[] mesh, short[] triangles) {
-        if (!fresh(ptsUs, REMOTE_FACE_MAX_AGE_NS)) return;
+        if (!isCurrentSource(ptsUs) || !fresh(ptsUs, REMOTE_FACE_MAX_AGE_NS)) return;
         FaceFrame old = remoteFace;
         if (ptsUs <= lastFacePtsUs) return;
         float[] values = {x, y, w, h, leftEyeX, leftEyeY, rightEyeX, rightEyeY, mouthX, mouthY};

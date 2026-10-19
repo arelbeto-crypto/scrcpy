@@ -144,7 +144,8 @@ public final class VisionService extends Service {
                         .build();
         segmenter = Segmentation.getClient(segmentationOptions);
 
-        faceDetector = FaceMeshDetection.getClient(FaceMeshDetectorOptions.DEFAULT_OPTIONS);
+        faceDetector = FaceMeshDetection.getClient(new FaceMeshDetectorOptions.Builder()
+                .setUseCase(FaceMeshDetectorOptions.FACE_MESH).build());
 
         inferenceExecutor = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "redmi-vision-inference");

@@ -96,16 +96,22 @@ jobs:
         run: |
           bash release/poco/tests/run.sh
           python3 release/poco/build_vision_shaders.py --check
-      - name: Keep a stable sideload signing key for Redmi Vision
+      - name: Cache the development signer for the separate V8.7 preview
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: redmi-vision-debug-keystore-v1
+          key: redmi-vision-v87-preview-debug-keystore-v1
       - name: Build Redmi Note 10 Pro vision coprocessor APK
         run: |
           chmod +x custom/gradlew
           custom/gradlew -p custom/release/poco/redmi-vision :app:assembleRelease --stacktrace
           test -f custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk
+          build_tools=$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          apk=custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk" > custom/release/poco/APK_SIGNER_V87.txt
+          "$build_tools/aapt" dump badging "$apk" > /tmp/v87-apk-badging.txt
+          grep -q "package: name='com.poco.visioncoprocessor.v87'" /tmp/v87-apk-badging.txt
+          grep -q "launchable-activity: name='com.poco.visioncoprocessor.MainActivity'" /tmp/v87-apk-badging.txt
       - name: Install native cross-compile tools
         run: |
           sudo apt-get update
@@ -142,6 +148,7 @@ jobs:
           cp ../custom/release/poco/CONTROLES_AR_V87.txt release/work/build-win64/dist/
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.ps1 release/work/build-win64/dist/
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.bat release/work/build-win64/dist/
+          cp ../custom/release/poco/APK_SIGNER_V87.txt release/work/build-win64/dist/
           cp ../custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk release/work/build-win64/dist/RedmiVisionCoprocessor.apk
           printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.7 Camera2 + preserved controls + clean pre-effect analysis + 468-point face mesh + GPU backgrounds + foreground-aware bokeh + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
           release/package_client.sh win64 zip
@@ -192,4 +199,4 @@ jobs:
           if ((Get-Item (Join-Path $exe.DirectoryName 'RedmiVisionCoprocessor.apk')).Length -lt 1000000) { throw 'Redmi APK unexpectedly small' }
           Write-Host $version
           if ((Get-Content (Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1') -Raw) -notmatch '--hwdec=disabled') { throw 'software decode default missing' }
-          Write-Host 'V8.6 Windows packaging smoke test passed'
+          Write-Host 'V8.7 Windows packaging smoke test passed'

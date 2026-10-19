@@ -7,7 +7,8 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = 'com.poco.visioncoprocessor'
+        // Preview installs alongside V8.6.1; its original signing key is not available here.
+        applicationId = 'com.poco.visioncoprocessor.v87'
         minSdk = 23
         targetSdk = 33
         versionCode = 870

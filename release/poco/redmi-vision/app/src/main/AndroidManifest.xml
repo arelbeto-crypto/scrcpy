@@ -11,7 +11,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Redmi Vision Coprocessor"
+        android:label="Redmi Vision 8.7"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

@@ -59,7 +59,8 @@ public final class MainActivity extends Activity {
         TextView info = new TextView(this);
         info.setText("\nProcesa segmentacion y tracking en este Redmi. "
                 + "El POCO conserva Camera2, render OpenGL, bokeh, AR y codificacion. "
-                + "Usa la misma red Wi-Fi/5 GHz.\n");
+                + "Usa la misma red Wi-Fi/5 GHz. "
+                + "Antes de iniciar, deten el servicio de la version anterior si aun esta abierto.\n");
         info.setTextSize(15);
         root.addView(info);
 

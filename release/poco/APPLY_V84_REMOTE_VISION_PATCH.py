@@ -110,7 +110,7 @@ edit("server/src/main/java/com/genymobile/scrcpy/Server.java", [
 edit("server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java", [
     ("POCO V8.4 camera GOP",
      "        MediaFormat format = createFormat(codec.getMimeType(), videoBitRate, maxFps, codecOptions);\n",
-     "        MediaFormat format = createFormat(codec.getMimeType(), videoBitRate, maxFps, codecOptions);\n        if (capture instanceof CameraCapture) {\n            // Faster recovery for a Redmi coprocessor joining mid-stream.\n            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2); // POCO V8.4 camera GOP\n        }\n"),
+     "        MediaFormat format = createFormat(codec.getMimeType(), videoBitRate, maxFps, codecOptions);\n        if (capture instanceof CameraCapture) {\n            // Faster recovery for a Redmi coprocessor joining mid-stream.\n            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); // POCO V8.6 camera GOP\n        }\n"),
 ])
 
 
@@ -261,4 +261,4 @@ edit("app/src/input_manager.c", [
                 LOGI("POCO V8.4: Alt+Y y Alt+Shift+1..9 ahora se renderizan en el POCO");"""),
 ])
 
-print("POCO V8.4 remote vision patch applied")
+print("POCO V8.6 remote vision patch applied")

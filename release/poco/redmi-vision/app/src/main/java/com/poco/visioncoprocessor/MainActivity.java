@@ -51,7 +51,7 @@ public final class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("Redmi Vision Coprocessor V8.7");
+        title.setText("Redmi Vision Coprocessor V8.8");
         title.setTextSize(22);
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -85,9 +85,7 @@ public final class MainActivity extends Activity {
         Button stop = new Button(this);
         stop.setText("Detener");
         stop.setOnClickListener(v -> {
-            Intent intent = new Intent(this, VisionService.class);
-            intent.setAction(VisionService.ACTION_STOP);
-            startService(intent);
+            stopService(new Intent(this, VisionService.class));
         });
         root.addView(stop, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -105,7 +103,7 @@ public final class MainActivity extends Activity {
 
         status = new TextView(this);
         status.setTextSize(14);
-        status.setTextColor(Color.LTGRAY);
+        status.setTextColor(Color.DKGRAY);
         status.setPadding(0, pad, 0, pad);
         root.addView(status, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

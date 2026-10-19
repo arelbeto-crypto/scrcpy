@@ -1,0 +1,37 @@
+POCO V8.8 NATURAL / scrcpy 5.0.1
+
+Abre POCO_V8_MENU.bat. Instala la app con INSTALAR_REDMI_VISION.bat.
+V8.8 se instala como una app separada; se conservan V8.6 y V8.7.
+El instalador detiene las versiones anteriores antes de abrir V8.8.
+
+Alt+G / Alt+Shift+G: fondo anterior/siguiente. Los cuatro fondos son
+superposiciones discretas (10-14%); la escena real siempre permanece visible.
+Alt+V: bokeh ON/OFF. Alt+Shift+V: cuatro intensidades suaves.
+El nivel inicial es el mas suave. El desenfoque usa nueve muestras Gaussianas
+que excluyen al sujeto y mezcla el resultado con la imagen real.
+
+Alt+S: Smart Zoom ON/OFF. Alt+Shift+S: encuadre amplio/medio/cercano.
+Espera 0.6 s de deteccion estable antes de acercar; conserva el encuadre
+1.8 s al perder la cara. El acercamiento no supera 0.18x/s.
+Limites automaticos: 1.4x / 1.75x / 2.1x segun perfil y capacidad de la lente.
+Usa el zoom realmente aplicado por Camera2 para calcular el siguiente cambio.
+El zoom manual y los presets Alt+Ctrl+1..5 se conservan.
+
+Alt+Y / Alt+Shift+Y: mascara siguiente/anterior.
+Alt+Shift+1..9: ninguna, lentes, bigote, antifaz de malla, halo, rubor,
+corazones, malla cyber, corona. El antifaz deja abiertos ojos y boca y
+usa los ojos reales como referencia de giro. La malla cyber es mas tenue.
+La compensacion de movimiento queda limitada al 4% del tamano del rostro.
+Alt+J: estado del coprocesador.
+
+CAMARA CONSERVADA
+Clic=AF; Shift+clic=AE; Alt+A=AF; Alt+K=bloqueo enfoque.
+Alt+Shift+A=AE; Alt+L=bloqueo AE; Alt+Shift+L=bloqueo AWB.
+Alt+Izq/Der=enfoque; Alt+Shift+Izq/Der=ISO; Alt+Shift+Arriba/Abajo=obturacion.
+Alt+RePag/AvPag=EV; Alt+Arriba/Abajo=zoom; Alt+M=modo AF.
+Alt+H=capacidades; Alt+0=reset; Alt+T=linterna; Alt+1..9=escenas.
+Aliases Alt+F/I/E y F1 conservados. Acer: --hwdec=disabled y --no-audio.
+
+El APK y scrcpy-server de este paquete deben usarse juntos.
+La instalacion, firma, empaquetado y prueba de Android se comprueban por
+separado. La alineacion y fluidez finales requieren probar los telefonos reales.

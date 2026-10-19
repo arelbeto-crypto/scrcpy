@@ -8,11 +8,11 @@ android {
 
     defaultConfig {
         // Preview installs alongside V8.6.1; its original signing key is not available here.
-        applicationId = 'com.poco.visioncoprocessor.v87'
+        applicationId = 'com.poco.visioncoprocessor.v88'
         minSdk = 23
         targetSdk = 33
-        versionCode = 870
-        versionName = '8.7'
+        versionCode = 880
+        versionName = '8.8'
     }
 
     signingConfigs {
@@ -24,6 +24,14 @@ android {
         release {
             minifyEnabled false
             signingConfig signingConfigs.debug
+        }
+    }
+
+    // Compressed native libraries are extracted by Package Manager. This avoids
+    // malformed mmap offsets when an APK is transferred or repackaged.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 

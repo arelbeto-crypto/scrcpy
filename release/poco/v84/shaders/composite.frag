@@ -40,22 +40,19 @@ void blurTap(inout vec3 total, inout float weight, vec2 p, vec2 delta, float ker
     weight+=w;
 }
 vec3 portraitBlur(vec2 p, vec3 source) {
-    vec2 d=texel*(2.2+9.5*bokeh_strength);
+    // Compact Gaussian kernel; strength also controls the blend with the real scene.
+    vec2 d=texel*(0.75+7.0*bokeh_strength);
     vec3 total=vec3(0.0); float weight=0.0;
-    blurTap(total,weight,p,vec2(0.0),0.14);
-    blurTap(total,weight,p,vec2(d.x,0.0),0.08);
-    blurTap(total,weight,p,vec2(-d.x,0.0),0.08);
-    blurTap(total,weight,p,vec2(0.0,d.y),0.08);
-    blurTap(total,weight,p,vec2(0.0,-d.y),0.08);
-    blurTap(total,weight,p,d,0.07);
-    blurTap(total,weight,p,-d,0.07);
-    blurTap(total,weight,p,vec2(d.x,-d.y),0.07);
-    blurTap(total,weight,p,vec2(-d.x,d.y),0.07);
-    blurTap(total,weight,p,vec2(d.x*1.8,0.0),0.065);
-    blurTap(total,weight,p,vec2(-d.x*1.8,0.0),0.065);
-    blurTap(total,weight,p,vec2(0.0,d.y*1.8),0.065);
-    blurTap(total,weight,p,vec2(0.0,-d.y*1.8),0.065);
-    return weight>0.001 ? total/weight : source;
+    blurTap(total,weight,p,vec2(0.0),0.25);
+    blurTap(total,weight,p,vec2(d.x,0.0),0.125);
+    blurTap(total,weight,p,vec2(-d.x,0.0),0.125);
+    blurTap(total,weight,p,vec2(0.0,d.y),0.125);
+    blurTap(total,weight,p,vec2(0.0,-d.y),0.125);
+    blurTap(total,weight,p,d,0.0625);
+    blurTap(total,weight,p,-d,0.0625);
+    blurTap(total,weight,p,vec2(d.x,-d.y),0.0625);
+    blurTap(total,weight,p,vec2(-d.x,d.y),0.0625);
+    return weight>0.001 ? mix(source,total/weight,min(bokeh_strength*0.85,0.50)) : source;
 }
 float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 vec3 backdrop(vec2 p) {
@@ -117,8 +114,11 @@ void main() {
         float background=(1.0-expanded)*mask_valid;
         if(background>0.002) {
             vec3 replacement=src.rgb;
-            if(background_mode>0) replacement=backdrop(p);
-            else if(bokeh_strength>0.0) replacement=portraitBlur(p,src.rgb);
+            if(bokeh_strength>0.0) replacement=portraitBlur(p,src.rgb);
+            if(background_mode>0) {
+                float tint=background_mode==3 ? 0.10 : 0.14;
+                replacement=mix(replacement,backdrop(p),tint);
+            }
             color.rgb=mix(src.rgb,replacement,background);
         }
     }

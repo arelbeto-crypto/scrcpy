@@ -72,6 +72,20 @@ public final class RemoteVisionState {
             this.triangles = triangles;
         }
 
+        public float predictionX(long nowUs) {
+            return prediction(velocityX, w, nowUs);
+        }
+
+        public float predictionY(long nowUs) {
+            return prediction(velocityY, h, nowUs);
+        }
+
+        private float prediction(float velocity, float size, long nowUs) {
+            float seconds = Math.max(0f, Math.min(.035f, (nowUs - ptsUs) / 1_000_000f));
+            float limit = size * .04f;
+            return Math.max(-limit, Math.min(limit, velocity * seconds));
+        }
+
         private static float clamp01(float v) {
             return Math.max(0f, Math.min(1f, v));
         }
@@ -95,7 +109,7 @@ public final class RemoteVisionState {
     private volatile long sessionGeneration;
 
     private volatile boolean bokehEnabled = true;
-    private volatile int bokehLevel = 2;
+    private volatile int bokehLevel;
     private volatile int arMode;
     private volatile int backgroundMode;
 
@@ -311,13 +325,13 @@ public final class RemoteVisionState {
     public float getBokehStrength() {
         switch (bokehLevel) {
             case 0:
-                return 0.42f;
+                return 0.12f;
             case 1:
-                return 0.64f;
+                return 0.20f;
             case 2:
-                return 0.84f;
+                return 0.30f;
             default:
-                return 1.00f;
+                return 0.42f;
         }
     }
 

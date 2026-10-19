@@ -200,8 +200,8 @@ public final class VisionCompositeOpenGLFilter implements OpenGLFilter {
         float dx = 0f, dy = 0f, opacity = 0f;
         if (face != null) {
             float ageMs = Math.max(0f, (System.nanoTime() / 1000 - face.ptsUs) / 1000f);
-            float predictSeconds = Math.min(.075f, ageMs / 1000f);
-            dx = face.velocityX * predictSeconds; dy = face.velocityY * predictSeconds;
+            long nowUs = System.nanoTime() / 1000;
+            dx = face.predictionX(nowUs); dy = face.predictionY(nowUs);
             opacity = Math.max(0f, Math.min(1f, (300f - ageMs) / 160f));
             GLES20.glUniform1f(faceValidLoc, opacity);
             GLES20.glUniform4f(faceRectLoc, face.x + dx, face.y + dy, face.w, face.h);

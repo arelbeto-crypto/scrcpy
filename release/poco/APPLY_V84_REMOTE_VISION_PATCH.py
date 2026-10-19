@@ -44,6 +44,8 @@ def edit(path, changes):
 
 copy_file("RemoteVisionState.java",
           "server/src/main/java/com/genymobile/scrcpy/video/RemoteVisionState.java")
+copy_file("SmartZoomController.java",
+          "server/src/main/java/com/genymobile/scrcpy/video/SmartZoomController.java")
 copy_file("VisionBridge.java",
           "server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java")
 copy_file("VisionFacePacket.java",

@@ -11,7 +11,8 @@
 
     <application
         android:allowBackup="false"
-        android:label="Redmi Vision 8.7"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:label="Redmi Vision 8.8"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

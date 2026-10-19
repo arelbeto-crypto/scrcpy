@@ -18,10 +18,10 @@ function Camera([string]$id, [string[]]$extra) {
 }
 while ($true) {
     Write-Host ''
-    Write-Host 'POCO V8.7 / scrcpy 5.0.1 | Malla facial + Bokeh limpio + Fondos GPU'
+    Write-Host 'POCO V8.8 / scrcpy 5.0.1 | Malla facial + Bokeh limpio + Fondos GPU'
     Write-Host '[1] Camara ID0 auto | [2] MultiCam ID3 auto'
     Write-Host '[3] ID0 1080p 30fps | [4] ID3 1080p 30fps'
-    Write-Host '[5] Listar camaras | [6] Version | [7] Controles V8.7 | [8] Instalar Redmi Vision | [Q] Salir'
+    Write-Host '[5] Listar camaras | [6] Version | [7] Controles V8.8 | [8] Instalar Redmi Vision | [Q] Salir'
     switch ((Read-Host 'Opcion').ToUpperInvariant()) {
        '1' { Camera '0' @() }
        '2' { Camera '3' @() }
@@ -29,7 +29,7 @@ while ($true) {
        '4' { Camera '3' @('--camera-size=1920x1080', '--camera-fps=30', '--video-bit-rate=12M') }
        '5' { & $exe -s $serial --list-cameras; & $exe -s $serial --list-camera-sizes }
        '6' { & $exe --version }
-       '7' { Get-Content (Join-Path $PSScriptRoot 'CONTROLES_AR_V87.txt') }
+       '7' { Get-Content (Join-Path $PSScriptRoot 'CONTROLES_AR_V88.txt') }
        '8' { & (Join-Path $PSScriptRoot 'INSTALAR_REDMI_VISION.ps1') }
        'Q' { return }
     }

@@ -1,0 +1,153 @@
+name: POCO V8.8 Natural Effects and Android Runtime Verification
+on:
+  push:
+    branches: [camera-vision-v88-natural]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: custom
+      - uses: actions/checkout@v6
+        with:
+          repository: Genymobile/scrcpy
+          ref: v5.0.1
+          path: scrcpy5
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: '**/*.gradle*'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: redmi-vision-v88-debug-keystore-v1
+      - name: Verify controller, tracking, topology and pixels
+        working-directory: custom
+        run: |
+          bash release/poco/tests/run.sh
+          VISION_GLES_LIBRARY=libGL.so.1 python3 release/poco/tests/shader_pixels.py
+          python3 release/poco/build_vision_shaders.py --check
+      - name: Build Android app and matching POCO server
+        run: |
+          mkdir -p scrcpy5/release/poco
+          cp custom/release/poco/APPLY_V8_AR_PATCH.py custom/release/poco/APPLY_V8_CAMERA_PRO_PATCH.py custom/release/poco/APPLY_V84_REMOTE_VISION_PATCH.py scrcpy5/release/poco/
+          cp -r custom/release/poco/v84 scrcpy5/release/poco/
+          cd scrcpy5
+          python3 release/poco/APPLY_V8_AR_PATCH.py
+          python3 release/poco/APPLY_V8_CAMERA_PRO_PATCH.py
+          python3 release/poco/APPLY_V84_REMOTE_VISION_PATCH.py
+          chmod +x gradlew ../custom/gradlew
+          ./gradlew -p server assembleRelease
+          ../custom/gradlew -p ../custom/release/poco/redmi-vision :app:assembleRelease
+          mkdir -p ../output
+          cp server/build/outputs/apk/release/server-release-unsigned.apk ../output/scrcpy-server
+          cp ../custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk ../output/RedmiVision-V8.8.apk
+          build_tools=$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$build_tools/apksigner" verify --verbose --print-certs ../output/RedmiVision-V8.8.apk > ../output/APK_VERIFICACION_V88.txt
+          "$build_tools/zipalign" -c -P 16 -v 4 ../output/RedmiVision-V8.8.apk > ../output/APK_ALINEACION_V88.txt
+          "$build_tools/aapt" dump badging ../output/RedmiVision-V8.8.apk > ../output/APK_COMPONENTES_V88.txt
+          grep -q "package: name='com.poco.visioncoprocessor.v88'" ../output/APK_COMPONENTES_V88.txt
+          grep -q "launchable-activity: name='com.poco.visioncoprocessor.MainActivity'" ../output/APK_COMPONENTES_V88.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: poco-v88-android-build
+          path: output/*
+          if-no-files-found: error
+          retention-days: 90
+
+  android-runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: poco-v88-android-build
+          path: output
+      - uses: actions/download-artifact@v8
+        with:
+          name: RedmiVisionCoprocessor-v87-apk
+          run-id: 39278220998
+          github-token: ${{ github.token }}
+          path: previous
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            python3 release/poco/tests/android_smoke.py previous/app-release.apk com.poco.visioncoprocessor.v87 > previous-runtime.txt 2>&1 || cat previous-runtime.txt
+            python3 release/poco/tests/android_smoke.py output/RedmiVision-V8.8.apk com.poco.visioncoprocessor.v88
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: poco-v88-android-runtime-logs
+          path: |
+            release/poco/tests/android-*-logcat.txt
+            previous-runtime.txt
+          retention-days: 90
+
+  windows-package:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: poco-v88-android-build
+          path: output
+      - uses: actions/download-artifact@v8
+        with:
+          name: scrcpy-camera-ar-poco-v87-redmi-vision-scrcpy-5.0.1-win64
+          run-id: 39278220998
+          github-token: ${{ github.token }}
+          path: baseline
+      - name: Package and verify Windows with the matching Android build
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem baseline -Filter *.zip | Select-Object -First 1
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath unpacked
+          $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
+          $dest = $exe.DirectoryName
+          Copy-Item output/scrcpy-server $dest -Force
+          Copy-Item output/RedmiVision-V8.8.apk (Join-Path $dest 'RedmiVisionCoprocessor.apk') -Force
+          Copy-Item output/*V88.txt $dest
+          Copy-Item release/poco/INSTALAR_REDMI_VISION.ps1 $dest -Force
+          Copy-Item release/poco/CONTROLES_AR_V88.txt $dest -Force
+          Copy-Item release/poco/POCO_V8_MENU.ps1 $dest -Force
+          $version = & $exe.FullName --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '5\.0\.1') { throw $version }
+          foreach ($file in @('INSTALAR_REDMI_VISION.ps1','POCO_V8_MENU.ps1')) {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $dest $file), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
+          if ((Get-FileHash output/RedmiVision-V8.8.apk).Hash -ne (Get-FileHash (Join-Path $dest 'RedmiVisionCoprocessor.apk')).Hash) { throw 'APK mismatch' }
+          if ((Get-Content (Join-Path $dest 'POCO_V8_MENU.ps1') -Raw) -notmatch '--hwdec=disabled') { throw 'Software decoding default missing' }
+          @('Base: scrcpy 5.0.1; Windows executable unchanged from verified V8.7', 'V8.8: natural backgrounds, gentle Gaussian blur, measured-zoom framing, open-eye facial mesh', "Commit: $env:GITHUB_SHA") | Set-Content (Join-Path $dest 'BUILD_INFO_V8.txt')
+          New-Item -ItemType Directory -Force deliverables | Out-Null
+          Compress-Archive -Path "$dest/*" -DestinationPath deliverables/POCO-V8.8-Windows.zip
+          Write-Host 'Windows EXE, PowerShell syntax, software decoder and APK identity checks passed'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: poco-v88-windows
+          path: deliverables/POCO-V8.8-Windows.zip
+          retention-days: 90

@@ -10,6 +10,7 @@ import java.nio.FloatBuffer;
 public final class FaceMeshRenderer {
     private int program;
     private int positionLoc, normalLoc, baryLoc, motionLoc, rectLoc, styleLoc, opacityLoc;
+    private int eyesLoc, aspectLoc;
     private FaceFrame uploaded;
     private FloatBuffer vertices;
     private float[] normals;
@@ -25,6 +26,8 @@ public final class FaceMeshRenderer {
         rectLoc = GLES20.glGetUniformLocation(program, "face_rect");
         styleLoc = GLES20.glGetUniformLocation(program, "style");
         opacityLoc = GLES20.glGetUniformLocation(program, "opacity");
+        eyesLoc = GLES20.glGetUniformLocation(program, "eyes");
+        aspectLoc = GLES20.glGetUniformLocation(program, "aspect");
     }
 
     public void draw(FaceFrame face, int style, float aspect, float dx, float dy, float opacity) {
@@ -36,6 +39,8 @@ public final class FaceMeshRenderer {
         GLES20.glUniform4f(rectLoc, face.x, face.y, face.w, face.h);
         GLES20.glUniform1i(styleLoc, style);
         GLES20.glUniform1f(opacityLoc, opacity);
+        GLES20.glUniform4f(eyesLoc, face.leftEyeX, face.leftEyeY, face.rightEyeX, face.rightEyeY);
+        GLES20.glUniform1f(aspectLoc, aspect);
         GLES20.glEnableVertexAttribArray(positionLoc);
         GLES20.glEnableVertexAttribArray(normalLoc);
         GLES20.glEnableVertexAttribArray(baryLoc);

@@ -238,8 +238,8 @@ CAMERA_API = r'''
     private int proScene;
     private boolean proSmartZoom;
     private int proSmartProfile = 1;
-    private int proSmartTick;
-    private int proSmartMissingFrames;
+    private long proSmartLastUpdateMs;
+    private final SmartZoomController proSmartController = new SmartZoomController();
     private static final int PRO_FOCUS = 0;
     private static final int PRO_ISO = 1;
     private static final int PRO_EXPOSURE = 2;
@@ -452,8 +452,8 @@ CAMERA_API = r'''
             return;
         }
         proSmartZoom = enabled;
-        proSmartTick = 0;
-        proSmartMissingFrames = 0;
+        proSmartLastUpdateMs = 0;
+        proSmartController.reset();
         if (proHasRequestKey(CaptureRequest.STATISTICS_FACE_DETECT_MODE)) {
             requestBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE,
                     enabled ? mode : CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
@@ -464,56 +464,29 @@ CAMERA_API = r'''
     private void proUpdateSmartZoom(TotalCaptureResult result) {
         if (!proSmartZoom || currentSession == null || requestBuilder == null) return;
 
-        // Run the framing controller at ~5 Hz at 30 fps. Camera2 keeps
-        // detecting every frame, but we do not rewrite the repeating request
-        // on every result.
-        if (++proSmartTick < 6) return;
-        proSmartTick = 0;
+        long nowMs = android.os.SystemClock.elapsedRealtime();
+        if (nowMs - proSmartLastUpdateMs < 100) return;
+        proSmartLastUpdateMs = nowMs;
 
-        android.hardware.camera2.params.Face[] faces =
-            result.get(CaptureResult.STATISTICS_FACES);
+        android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
         Rect active = proCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-        if (active == null) return;
-
-        boolean hasFace = faces != null && faces.length > 0;
-        float desired;
-
-        if (!hasFace) {
-            // Avoid pumping the zoom if one or two face results are missed.
-            if (++proSmartMissingFrames < 6) return;
-            desired = 1.0f;
-        } else {
-            proSmartMissingFrames = 0;
-            Rect best = null;
-            long bestArea = 0;
+        if (active == null || active.width() <= 0 || active.height() <= 0) return;
+        Rect best = null;
+        long bestArea = 0;
+        if (faces != null) {
             for (android.hardware.camera2.params.Face face : faces) {
+                if (face.getScore() < 60) continue;
                 Rect bounds = face.getBounds();
                 long area = (long) bounds.width() * bounds.height();
-                if (area > bestArea) {
-                    bestArea = area;
-                    best = bounds;
-                }
+                if (area > bestArea) { bestArea = area; best = bounds; }
             }
-            if (best == null || best.width() <= 0 || best.height() <= 0) return;
-
-            float coverage = Math.max((float) best.width() / active.width(),
-                                      (float) best.height() / active.height());
-            float[] targetCoverage = {0.22f, 0.31f, 0.40f}; // wide, medium, close
-            float[] maxProfileZoom = {2.0f, 3.0f, 4.0f};
-            int profile = Math.max(0, Math.min(2, proSmartProfile));
-
-            desired = zoom * targetCoverage[profile] / Math.max(0.05f, coverage);
-            desired = Math.max(1.0f, Math.min(maxProfileZoom[profile], desired));
         }
-
-        desired = clampZoom(desired);
-
-        // Face present: responsive but damped. Face lost: slower return to 1x.
-        float alpha = hasFace ? 0.14f : 0.08f;
-        float smoothed = clampZoom(zoom + (desired - zoom) * alpha);
-
-        // Dead zone removes small face-detection jitter.
-        float deadZone = Math.max(0.035f, zoom * 0.018f);
+        float coverage = best == null ? Float.NaN
+                : Math.max((float) best.width() / active.width(), (float) best.height() / active.height());
+        Float achieved = result.get(CaptureResult.CONTROL_ZOOM_RATIO);
+        float smoothed = clampZoom(proSmartController.update(zoom,
+                achieved != null ? achieved : zoom, coverage, proSmartProfile, nowMs));
+        float deadZone = .001f;
         if (Math.abs(smoothed - zoom) < deadZone) return;
 
         zoom = smoothed;

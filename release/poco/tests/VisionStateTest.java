@@ -42,6 +42,14 @@ public final class VisionStateTest {
         long current = System.nanoTime() / 1000 + 1;
         state.updateMask(new byte[] {1}, 1, 1, current, 10, 15);
         check(state.getFreshMask() != null, "The new session must still accept current results");
+        RemoteVisionState.FaceFrame moving = new RemoteVisionState.FaceFrame(.1f,.2f,.2f,.3f,
+                .16f,.3f,.24f,.3f,.2f,.4f,true,current,1.5f,-1.5f,null,null);
+        check(Math.abs(moving.predictionX(current + 75000)) <= .0081f,
+                "Prediction must not displace a mask by more than 4% of face width");
+        check(Math.abs(moving.predictionY(current + 75000)) <= .0121f,
+                "Vertical prediction must be bounded by face height");
+        check(moving.predictionX(current - 1000) == 0,
+                "Future timestamps must not extrapolate a mask backwards");
         System.out.println("VisionStateTest: 9 behavior checks passed");
     }
 }

@@ -118,8 +118,13 @@ assert render(mode=2, time=0) != render(mode=2, time=4), 'Aurora background must
 half_mask = bytes(channel for y in range(32) for x in range(32)
                   for channel in ((255,255,255,255) if x < 16 else (0,0,0,255)))
 assert render(mask=half_mask, x=20)[0] < 10, 'Bokeh must not bleed red foreground into blue background'
+for mode in range(1, 5):
+    pixel = render(mode=mode, blur=0)
+    assert pixel[2] >= 185, 'A translucent background must retain at least 72% of the original blue scene'
+pixel = render(mask=0, blur=0.18, x=17)
+assert pixel[0] <= 35 and pixel[2] >= 220, 'Gentle bokeh must keep a background edge recognizable'
 assert api(gl, 'glGetError', U)() == 0, 'OpenGL error'
-print('shader_pixels: 8 GPU behavior checks passed')
+print('shader_pixels: 13 GPU behavior checks passed')
 
 # Use an actual EGLImage-backed external camera texture for the first analysis draw.
 # Different sampler types cannot share unit 0, even when analysis_only skips mask sampling.
@@ -152,3 +157,32 @@ assert api(gl, 'glGetError', U)() == 0, 'First analysis draw must use separate s
 pixel = (C.c_ubyte * 4)(); read(17,16,1,1,0x1908,0x1401,pixel)
 assert tuple(pixel) == blue, 'First native OES analysis draw must contain clean camera pixels'
 print('shader_pixels: native OES first-draw regression and clean readback passed')
+
+# Render the real facial surface against a transparent buffer. A mask must leave
+# the eyes and lower face readable, including when its source triangles cover them.
+program = api(gl, 'glCreateProgram', U)()
+attach(program, shader(0x8B31, (base / 'mesh.vert').read_text()))
+attach(program, shader(0x8B30, (base / 'mesh.frag').read_text()))
+api(gl, 'glLinkProgram', None, U)(program)
+api(gl, 'glGetProgramiv', None, U, U, P)(program, 0x8B82, C.byref(ok))
+assert ok.value, 'Facial mesh program linking'
+api(gl, 'glUseProgram', None, U)(program)
+mesh_arrays = []
+for name, values in [
+        ('mesh_pos', [0,1,0, 1,1,0, 0,0,0, 1,0,0]),
+        ('mesh_normal', [0,0,1] * 4), ('mesh_bary', [1/3,1/3,1/3] * 4)]:
+    data = (F * 12)(*values); mesh_arrays.append(data)
+    index = get_attribute(program, name.encode())
+    if index >= 0:
+        enable_attribute(index); attribute_pointer(index, 3, 0x1406, 0, 0, data)
+u2(loc('motion'), 0, 0); u4(loc('face_rect'), 0, 0, 1, 1)
+u4(loc('eyes'), .30, .35, .70, .35); uf(loc('aspect'), 1)
+uf(loc('opacity'), 1); ui(loc('style'), 3)
+draw(5, 0, 4)
+def mesh_pixel(x, y):
+    value = (C.c_ubyte * 4)(); read(x,y,1,1,0x1908,0x1401,value)
+    return tuple(value)
+assert mesh_pixel(9,20)[3] <= 16, 'Facial mask must leave the eyes open'
+assert mesh_pixel(16,10)[3] <= 4, 'Facial mask must leave the mouth and jaw uncovered'
+assert 20 <= mesh_pixel(16,20)[3] <= 128, 'The bridge must remain visible with a subtle translucent finish'
+print('shader_pixels: 3 facial mask coverage and opacity checks passed')

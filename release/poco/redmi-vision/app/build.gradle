@@ -10,8 +10,8 @@ android {
         applicationId = 'com.poco.visioncoprocessor'
         minSdk = 23
         targetSdk = 33
-        versionCode = 85
-        versionName = '8.5'
+        versionCode = 851
+        versionName = '8.5.1'
     }
 
     signingConfigs {

@@ -1,4 +1,4 @@
-name: POCO V8.6 scrcpy 5.0.1 Resilient Redmi Vision Windows
+name: POCO V8.6.1 scrcpy 5.0.1 Tracking Mask Zoom Polish Windows
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
           python3 release/poco/APPLY_V8_AR_PATCH.py
           grep -q 'POCO V8 AR shortcuts' app/src/input_manager.c
           grep -q 'sc_screen_render_camera_ar_overlay' app/src/screen.c
-      - name: Port Camera2 controls Smart Zoom scenes and preserved aliases
+      - name: Port Camera2 controls and polished Smart Zoom
         run: |
           cp custom/release/poco/APPLY_V8_CAMERA_PRO_PATCH.py scrcpy5/release/poco/
           cd scrcpy5
@@ -62,7 +62,9 @@ jobs:
           grep -q 'PRO_ZOOM_PRESET' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'proResetSceneProcessing' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
           grep -q 'deadZone' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
-      - name: Port V8.6 Redmi Vision resilient YUV bridge
+          grep -q 'proZoomTarget' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q '1 / 32f' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+      - name: Port V8.6.1 Redmi Vision tracking and mask polish
         run: |
           cp custom/release/poco/APPLY_V84_REMOTE_VISION_PATCH.py scrcpy5/release/poco/
           cp -r custom/release/poco/v84 scrcpy5/release/poco/
@@ -75,6 +77,9 @@ jobs:
           grep -q 'MSG_FACE' server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java
           grep -q 'subject_edge' server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java
           grep -q 'decoder YUV flexible' ../custom/release/poco/redmi-vision/app/src/main/java/com/poco/visioncoprocessor/VisionService.java
+          grep -q 'heartMask' server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java
+          grep -q 'eye_span' server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java
+          grep -q 'segmentationDue' ../custom/release/poco/redmi-vision/app/src/main/java/com/poco/visioncoprocessor/VisionService.java
           test -f server/src/main/java/com/genymobile/scrcpy/video/RemoteVisionState.java
           test -f server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java
           test -f server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java
@@ -113,7 +118,7 @@ jobs:
       - name: Package portable Windows V8
         working-directory: scrcpy5
         env:
-          VERSION: 5.0.1-poco86-vision
+          VERSION: 5.0.1-poco861-polish
         run: |
           cp ../custom/release/poco/POCO_V8_MENU.ps1 release/work/build-win64/dist/
           cp ../custom/release/poco/POCO_V8_MENU.bat release/work/build-win64/dist/
@@ -126,17 +131,17 @@ jobs:
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.ps1 release/work/build-win64/dist/
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.bat release/work/build-win64/dist/
           cp ../custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk release/work/build-win64/dist/RedmiVisionCoprocessor.apk
-          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.6 Camera2 + Smart Zoom + Redmi ML coprocessor + buffer-mode YUV decoder + 640px inference + stable TCP + stronger bokeh + Mask FX + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
+          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.6.1 on frozen V8.6 core + landmark-aligned masks + tracking priority + adaptive matte + smooth zoom + video-only --no-audio + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:
-          name: scrcpy-camera-ar-poco-v86-redmi-vision-scrcpy-5.0.1-win64
+          name: scrcpy-camera-ar-poco-v861-polish-scrcpy-5.0.1-win64
           path: scrcpy5/release/output/*.zip
           if-no-files-found: error
           retention-days: 90
       - uses: actions/upload-artifact@v7
         with:
-          name: RedmiVisionCoprocessor-v86-apk
+          name: RedmiVisionCoprocessor-v861-apk
           path: custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
@@ -147,7 +152,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: scrcpy-camera-ar-poco-v86-redmi-vision-scrcpy-5.0.1-win64
+          name: scrcpy-camera-ar-poco-v861-polish-scrcpy-5.0.1-win64
           path: package
       - name: Verify portable EXE version and menu syntax
         shell: pwsh
@@ -175,4 +180,5 @@ jobs:
           if ((Get-Item (Join-Path $exe.DirectoryName 'RedmiVisionCoprocessor.apk')).Length -lt 1000000) { throw 'Redmi APK unexpectedly small' }
           Write-Host $version
           if ((Get-Content (Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1') -Raw) -notmatch '--hwdec=disabled') { throw 'software decode default missing' }
-          Write-Host 'V8.6 Windows packaging smoke test passed'
+          if ((Get-Content (Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1') -Raw) -notmatch '--no-audio') { throw 'audio-off default missing' }
+          Write-Host 'V8.6.1 Windows packaging smoke test passed'

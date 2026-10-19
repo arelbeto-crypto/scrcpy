@@ -6,17 +6,14 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.ImageFormat;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.media.Image;
-import android.media.ImageReader;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
+import android.media.MediaCodecInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -98,13 +95,12 @@ public final class VisionService extends Service {
     private Segmenter segmenter;
     private FaceDetector faceDetector;
     private ExecutorService inferenceExecutor;
-    private HandlerThread imageThread;
-    private Handler imageHandler;
 
     private MediaCodec decoder;
-    private ImageReader imageReader;
     private int decoderWidth;
     private int decoderHeight;
+    private int streamWidth;
+    private int streamHeight;
     private byte[] pendingConfig;
     private boolean configQueued;
     private boolean decoderNeedsKeyFrame = true;
@@ -155,10 +151,6 @@ public final class VisionService extends Service {
             return t;
         });
 
-        imageThread = new HandlerThread("redmi-vision-images");
-        imageThread.start();
-        imageHandler = new Handler(imageThread.getLooper());
-
         PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RedmiVision:Coprocessor");
         wakeLock.setReferenceCounted(false);
@@ -204,7 +196,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.5.1 por Wi-Fi...";
+                status = "Buscando POCO V8.6 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -315,9 +307,11 @@ public final class VisionService extends Service {
             throw new IOException("Version de protocolo no compatible: " + protocol);
         }
         if (codecId != H264_CODEC_ID) {
-            throw new IOException("El coprocesador V8.5.1 requiere H.264");
+            throw new IOException("El coprocesador V8.6 requiere H.264");
         }
         if (width > 0 && height > 0) {
+            streamWidth = width;
+            streamHeight = height;
             configureDecoder(width, height);
         }
     }
@@ -329,6 +323,8 @@ public final class VisionService extends Service {
         int width = in.readInt();
         int height = in.readInt();
         skipFully(in, size - 8);
+        streamWidth = width;
+        streamHeight = height;
         configureDecoder(width, height);
     }
 
@@ -349,13 +345,26 @@ public final class VisionService extends Service {
         if ((flags & FLAG_CONFIG) != 0) {
             pendingConfig = data;
         }
-        feedDecoder(data, ptsUs, flags);
+
+        try {
+            feedDecoder(data, ptsUs, flags);
+        } catch (IOException | RuntimeException e) {
+            synchronized (decoderLock) {
+                releaseDecoderLocked();
+                decoderNeedsKeyFrame = true;
+            }
+            status = "POCO conectado | decoder auxiliar reiniciado: "
+                    + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
     }
 
     private void configureDecoder(int width, int height) throws IOException {
         if (width <= 0 || height <= 0) {
             return;
         }
+        streamWidth = width;
+        streamHeight = height;
+
         synchronized (decoderLock) {
             if (decoder != null && decoderWidth == width && decoderHeight == height) {
                 return;
@@ -363,17 +372,15 @@ public final class VisionService extends Service {
             releaseDecoderLocked();
 
             try {
-                imageReader = ImageReader.newInstance(width, height,
-                        ImageFormat.YUV_420_888, 4);
-                imageReader.setOnImageAvailableListener(this::onImageAvailable, imageHandler);
-
                 MediaFormat format = MediaFormat.createVideoFormat(
                         MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
                 format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,
                         Math.max(2 * 1024 * 1024, width * height));
+                format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                        MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
 
                 decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-                decoder.configure(format, imageReader.getSurface(), null, 0);
+                decoder.configure(format, null, null, 0);
                 decoder.start();
 
                 decoderWidth = width;
@@ -388,27 +395,33 @@ public final class VisionService extends Service {
                 }
 
                 status = "POCO conectado: " + width + "x" + height
-                        + ". Segmentacion + tracking activos.";
+                        + " | decoder YUV flexible listo";
             } catch (Exception e) {
                 releaseDecoderLocked();
-                throw new IOException("No se pudo iniciar decoder H.264: " + e.getMessage(), e);
+                throw new IOException("No se pudo iniciar decoder YUV H.264: "
+                        + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()), e);
             }
         }
     }
 
     private void feedDecoder(byte[] data, long ptsUs, int flags) throws IOException {
         synchronized (decoderLock) {
+            boolean config = (flags & FLAG_CONFIG) != 0;
+            boolean keyFrame = (flags & FLAG_KEY) != 0;
+
             if (decoder == null) {
-                return;
+                if (config) {
+                    return;
+                }
+                if (!keyFrame || streamWidth <= 0 || streamHeight <= 0) {
+                    return;
+                }
+                configureDecoder(streamWidth, streamHeight);
             }
 
             drainDecoderLocked();
 
-            boolean config = (flags & FLAG_CONFIG) != 0;
-            boolean keyFrame = (flags & FLAG_KEY) != 0;
-
             if (config) {
-                pendingConfig = data;
                 if (!configQueued) {
                     configQueued = queueInputLocked(data, ptsUs,
                             MediaCodec.BUFFER_FLAG_CODEC_CONFIG, true);
@@ -420,27 +433,23 @@ public final class VisionService extends Service {
                 if (!keyFrame) {
                     return;
                 }
-
                 try {
                     decoder.flush();
                 } catch (IllegalStateException e) {
-                    throw new IOException("Decoder no disponible al resincronizar", e);
+                    throw new IOException("flush decoder", e);
                 }
-
                 configQueued = false;
                 if (pendingConfig != null) {
                     configQueued = queueInputLocked(pendingConfig, 0,
                             MediaCodec.BUFFER_FLAG_CODEC_CONFIG, true);
                     if (!configQueued) {
-                        noteDecoderDrop("sin buffer para SPS/PPS");
+                        noteDecoderDrop("sin buffer SPS/PPS");
                         return;
                     }
                 }
             }
 
             if (!queueInputLocked(data, ptsUs, 0, keyFrame)) {
-                // The coprocessor is analysis-only: dropping a GOP is much better
-                // than tearing down TCP and reconnecting every time MediaCodec is busy.
                 decoderNeedsKeyFrame = true;
                 noteDecoderDrop("decoder ocupado");
                 return;
@@ -455,7 +464,7 @@ public final class VisionService extends Service {
 
     private boolean queueInputLocked(byte[] data, long ptsUs, int flags,
                                      boolean important) throws IOException {
-        int timeoutUs = important ? 100_000 : 8_000;
+        int timeoutUs = important ? 80_000 : 4_000;
         int index;
         try {
             index = decoder.dequeueInputBuffer(timeoutUs);
@@ -471,29 +480,24 @@ public final class VisionService extends Service {
                 throw new IOException("Decoder no disponible", e);
             }
         }
-
         if (index < 0) {
             return false;
         }
 
         ByteBuffer buffer = decoder.getInputBuffer(index);
         if (buffer == null || buffer.capacity() < data.length) {
-            throw new IOException("NAL H.264 excede el buffer del decoder");
+            throw new IOException("NAL H.264 excede buffer decoder");
         }
 
         buffer.clear();
         buffer.put(data);
-        try {
-            decoder.queueInputBuffer(index, 0, data.length, ptsUs, flags);
-        } catch (IllegalStateException e) {
-            throw new IOException("Decoder no disponible", e);
-        }
+        decoder.queueInputBuffer(index, 0, data.length, ptsUs, flags);
         return true;
     }
 
     private void noteDecoderDrop(String reason) {
         ++decoderDroppedFrames;
-        status = "POCO conectado. Vision activa | resincronizando video auxiliar | "
+        status = "POCO conectado | vision resincronizando | "
                 + reason + " | drops=" + decoderDroppedFrames;
     }
 
@@ -501,52 +505,67 @@ public final class VisionService extends Service {
         if (decoder == null) {
             return;
         }
+
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         while (true) {
-            int index;
-            try {
-                index = decoder.dequeueOutputBuffer(info, 0);
-            } catch (IllegalStateException e) {
-                return;
-            }
+            int index = decoder.dequeueOutputBuffer(info, 0);
             if (index >= 0) {
-                decoder.releaseOutputBuffer(index, true);
+                if (info.size > 0 && (!faceBusy.get() || !segmentationBusy.get())) {
+                    Image image = null;
+                    try {
+                        image = decoder.getOutputImage(index);
+                        if (image != null) {
+                            processDecodedImage(image);
+                        }
+                    } catch (RuntimeException e) {
+                        status = "Frame YUV descartado: "
+                                + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                    } finally {
+                        if (image != null) {
+                            image.close();
+                        }
+                    }
+                }
+                decoder.releaseOutputBuffer(index, false);
                 continue;
             }
+
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                MediaFormat output = decoder.getOutputFormat();
+                String mime = output.getString(MediaFormat.KEY_MIME);
+                status = "POCO conectado | decoder YUV activo"
+                        + (mime != null ? " | " + mime : "");
                 continue;
             }
             break;
         }
     }
 
-    private void onImageAvailable(ImageReader reader) {
-        Image image = reader.acquireLatestImage();
-        if (image == null) {
-            return;
-        }
-
+    private void processDecodedImage(Image image) {
         boolean doFace = faceBusy.compareAndSet(false, true);
         boolean doSegmentation = segmentationBusy.compareAndSet(false, true);
         if (!doFace && !doSegmentation) {
-            image.close();
+            return;
+        }
+
+        Nv21Frame frame;
+        try {
+            frame = imageToNv21Downscaled(image, 640);
+        } catch (RuntimeException e) {
+            if (doFace) faceBusy.set(false);
+            if (doSegmentation) segmentationBusy.set(false);
+            return;
+        }
+
+        if (frame == null) {
+            if (doFace) faceBusy.set(false);
+            if (doSegmentation) segmentationBusy.set(false);
             return;
         }
 
         final long startedMs = SystemClock.elapsedRealtime();
-        final int imageWidth = image.getWidth();
-        final int imageHeight = image.getHeight();
-        final AtomicInteger pending = new AtomicInteger((doFace ? 1 : 0) + (doSegmentation ? 1 : 0));
-
-        final InputImage input;
-        try {
-            input = InputImage.fromMediaImage(image, 0);
-        } catch (RuntimeException e) {
-            if (doFace) faceBusy.set(false);
-            if (doSegmentation) segmentationBusy.set(false);
-            image.close();
-            return;
-        }
+        final InputImage input = InputImage.fromByteArray(
+                frame.data, frame.width, frame.height, 0, InputImage.IMAGE_FORMAT_NV21);
 
         if (doFace) {
             try {
@@ -554,21 +573,15 @@ public final class VisionService extends Service {
                         .addOnCompleteListener(inferenceExecutor, task -> {
                             try {
                                 List<Face> faces = task.isSuccessful() ? task.getResult() : null;
-                                sendFaceResult(faces, imageWidth, imageHeight, startedMs);
+                                sendFaceResult(faces, frame.width, frame.height, startedMs);
                             } catch (RuntimeException e) {
                                 status = "Tracking: " + e.getMessage();
                             } finally {
                                 faceBusy.set(false);
-                                if (pending.decrementAndGet() == 0) {
-                                    image.close();
-                                }
                             }
                         });
             } catch (RuntimeException e) {
                 faceBusy.set(false);
-                if (pending.decrementAndGet() == 0) {
-                    image.close();
-                }
             }
         }
 
@@ -585,17 +598,91 @@ public final class VisionService extends Service {
                                 status = "Segmentacion: " + e.getMessage();
                             } finally {
                                 segmentationBusy.set(false);
-                                if (pending.decrementAndGet() == 0) {
-                                    image.close();
-                                }
                             }
                         });
             } catch (RuntimeException e) {
                 segmentationBusy.set(false);
-                if (pending.decrementAndGet() == 0) {
-                    image.close();
-                }
             }
+        }
+    }
+
+    private static Nv21Frame imageToNv21Downscaled(Image image, int maxWidth) {
+        if (image.getFormat() != android.graphics.ImageFormat.YUV_420_888) {
+            return null;
+        }
+
+        Rect crop = image.getCropRect();
+        int sourceWidth = crop.width();
+        int sourceHeight = crop.height();
+        if (sourceWidth < 2 || sourceHeight < 2) {
+            return null;
+        }
+
+        int width = sourceWidth;
+        int height = sourceHeight;
+        if (width > maxWidth) {
+            height = Math.max(2, (int) Math.round(sourceHeight * (maxWidth / (double) sourceWidth)));
+            width = maxWidth;
+        }
+        width &= ~1;
+        height &= ~1;
+        if (width < 2 || height < 2) {
+            return null;
+        }
+
+        Image.Plane[] planes = image.getPlanes();
+        if (planes == null || planes.length < 3) {
+            return null;
+        }
+
+        byte[] out = new byte[width * height * 3 / 2];
+        ByteBuffer yBuffer = planes[0].getBuffer();
+        ByteBuffer uBuffer = planes[1].getBuffer();
+        ByteBuffer vBuffer = planes[2].getBuffer();
+
+        int yBase = yBuffer.position();
+        int uBase = uBuffer.position();
+        int vBase = vBuffer.position();
+
+        int yRowStride = planes[0].getRowStride();
+        int yPixelStride = planes[0].getPixelStride();
+        int uRowStride = planes[1].getRowStride();
+        int uPixelStride = planes[1].getPixelStride();
+        int vRowStride = planes[2].getRowStride();
+        int vPixelStride = planes[2].getPixelStride();
+
+        int p = 0;
+        for (int y = 0; y < height; ++y) {
+            int sy = crop.top + (int) ((long) y * sourceHeight / height);
+            for (int x = 0; x < width; ++x) {
+                int sx = crop.left + (int) ((long) x * sourceWidth / width);
+                out[p++] = yBuffer.get(yBase + sy * yRowStride + sx * yPixelStride);
+            }
+        }
+
+        for (int y = 0; y < height / 2; ++y) {
+            int sourceLumaY = crop.top + (int) ((long) (y * 2) * sourceHeight / height);
+            int cy = sourceLumaY / 2;
+            for (int x = 0; x < width / 2; ++x) {
+                int sourceLumaX = crop.left + (int) ((long) (x * 2) * sourceWidth / width);
+                int cx = sourceLumaX / 2;
+                out[p++] = vBuffer.get(vBase + cy * vRowStride + cx * vPixelStride);
+                out[p++] = uBuffer.get(uBase + cy * uRowStride + cx * uPixelStride);
+            }
+        }
+
+        return new Nv21Frame(out, width, height);
+    }
+
+    private static final class Nv21Frame {
+        final byte[] data;
+        final int width;
+        final int height;
+
+        Nv21Frame(byte[] data, int width, int height) {
+            this.data = data;
+            this.width = width;
+            this.height = height;
         }
     }
 
@@ -700,7 +787,7 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "V8.5: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        "V8.6: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
                         faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);
@@ -818,10 +905,6 @@ public final class VisionService extends Service {
             decoder.release();
             decoder = null;
         }
-        if (imageReader != null) {
-            imageReader.close();
-            imageReader = null;
-        }
         decoderWidth = 0;
         decoderHeight = 0;
         configQueued = false;
@@ -842,7 +925,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.5.1")
+                .setContentTitle("Redmi Vision Coprocessor V8.6")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)
@@ -873,10 +956,6 @@ public final class VisionService extends Service {
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdownNow();
         }
-        if (imageThread != null) {
-            imageThread.quitSafely();
-        }
-
         if (multicastLock != null && multicastLock.isHeld()) {
             multicastLock.release();
         }

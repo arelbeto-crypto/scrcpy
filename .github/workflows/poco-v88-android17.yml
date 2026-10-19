@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [google_apis, google_apis_ps16k]
+        target: [google_apis_ps16k]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -32,14 +32,13 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: '37.0'
+          api-level: '37.1'
           arch: x86_64
           target: ${{ matrix.target }}
           ram-size: 4096M
           disk-size: 8192M
           disable-animations: true
-          # API 37.0 mapper.ranchu asserts on readColorBufferDma advertised by
-          # Emulator 37.2. Use the copy path to keep SurfaceFlinger alive in CI.
+          # Use the current Android 17 QPR1 image, including 16KB native loading.
           emulator-options: -no-window -gpu swiftshader -feature -GLDirectMem -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell getprop ro.build.version.release

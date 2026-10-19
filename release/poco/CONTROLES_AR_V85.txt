@@ -1,4 +1,4 @@
-POCO V8.5.1 | BOKEH PULIDO + TRACKING DE BAJA LATENCIA + MASK FX
+POCO V8.6 | BOKEH PULIDO + TRACKING DE BAJA LATENCIA + MASK FX
 
 OBJETIVO
 - Acer = solo visor/decoder con --hwdec=disabled.
@@ -6,7 +6,7 @@ OBJETIVO
 - Redmi Note 10 Pro = segmentacion + tracking facial/landmarks.
 - El tracking ya no espera a que termine la segmentacion.
 
-CAMBIOS V8.5.1
+CAMBIOS V8.6
 
 TRACKING
 - Rostro y segmentacion se procesan de forma independiente en el Redmi.
@@ -79,8 +79,18 @@ PERFIL RECOMENDADO
 scrcpy.exe --video-source=camera --camera-id=0 --max-size=2560 --video-codec=h264 --hwdec=disabled --no-audio --shortcut-mod=lalt --print-fps
 
 
-CORRECCION V8.5.1
+CORRECCION V8.6
 - Los logs del bridge se identifican correctamente como V8.5.1.
 - Si el decoder auxiliar del Redmi se satura, se descarta el GOP de analisis y se espera al siguiente keyframe sin cerrar TCP.
 - Si la cola Wi-Fi del POCO se llena, se limpia el backlog y se resincroniza en el siguiente keyframe.
 - El tracking facial envia de nuevo rostro, ojos y boca reales.
+
+
+DECODER YUV V8.6
+- El Redmi ya no usa Surface + ImageReader para decodificar el H.264 auxiliar.
+- MediaCodec trabaja en modo buffer con YUV420 flexible.
+- Cada frame elegido se reduce a 640 px de ancho antes de ML Kit.
+- El tracking y la segmentacion siguen independientes.
+- Un error del decoder auxiliar ya no derriba la conexion TCP.
+- Si el decoder necesita recuperarse, espera keyframe y continua conectado.
+- GOP de camara reducido a 1 segundo para recuperacion rapida.

@@ -79,7 +79,7 @@ public final class VisionBridge implements Closeable {
         beaconThread.setDaemon(true);
         beaconThread.start();
 
-        Ln.i("POCO V8.5 Vision Bridge: waiting for Redmi coprocessor on TCP " + TCP_PORT);
+        Ln.i("POCO V8.5.1 Vision Bridge: waiting for Redmi coprocessor on TCP " + TCP_PORT);
     }
 
     public boolean isRunning() {
@@ -129,8 +129,8 @@ public final class VisionBridge implements Closeable {
         int flags = keyFrame ? FLAG_KEY : 0;
         byte[] data = copy(source);
         if (!c.enqueue(Message.video(ptsUs, flags, data))) {
-            Ln.w("POCO V8.4 Vision Bridge: Redmi is falling behind, reconnecting cleanly");
-            c.close();
+            Ln.w("POCO V8.5.1 Vision Bridge: analysis queue full, dropping backlog until next keyframe");
+            c.resyncAtNextKeyFrame();
         }
     }
 
@@ -153,11 +153,11 @@ public final class VisionBridge implements Closeable {
             }
         } catch (SocketException e) {
             if (running.get()) {
-                Ln.w("POCO V8.4 Vision Bridge socket error: " + e.getMessage());
+                Ln.w("POCO V8.5.1 Vision Bridge socket error: " + e.getMessage());
             }
         } catch (IOException e) {
             if (running.get()) {
-                Ln.e("POCO V8.4 Vision Bridge accept failed", e);
+                Ln.e("POCO V8.5.1 Vision Bridge accept failed", e);
             }
         }
     }
@@ -173,7 +173,7 @@ public final class VisionBridge implements Closeable {
                 client = next;
                 visionState.setConnected(true, socket.getInetAddress().getHostAddress());
                 next.start();
-                Ln.i("POCO V8.4 Vision Bridge: Redmi connected from "
+                Ln.i("POCO V8.5.1 Vision Bridge: Redmi connected from "
                         + socket.getInetAddress().getHostAddress());
             } catch (IOException e) {
                 closeQuietly(socket);
@@ -417,6 +417,11 @@ public final class VisionBridge implements Closeable {
             queue.clear();
         }
 
+        void resyncAtNextKeyFrame() {
+            waitingKeyFrame = true;
+            queue.clear();
+        }
+
         private void writeLoop() {
             try {
                 writeHello();
@@ -435,7 +440,7 @@ public final class VisionBridge implements Closeable {
                 Thread.currentThread().interrupt();
             } catch (IOException e) {
                 if (alive.get()) {
-                    Ln.w("POCO V8.4 Vision Bridge writer closed: " + e.getMessage());
+                    Ln.w("POCO V8.5.1 Vision Bridge writer closed: " + e.getMessage());
                 }
             } finally {
                 close();
@@ -466,7 +471,7 @@ public final class VisionBridge implements Closeable {
                 // normal disconnect
             } catch (IOException e) {
                 if (alive.get()) {
-                    Ln.w("POCO V8.4 Vision Bridge reader closed: " + e.getMessage());
+                    Ln.w("POCO V8.5.1 Vision Bridge reader closed: " + e.getMessage());
                 }
             } finally {
                 close();

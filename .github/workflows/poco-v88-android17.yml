@@ -10,6 +10,10 @@ jobs:
   android17-runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [google_apis, google_apis_ps16k]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -28,20 +32,21 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37
+          api-level: '37.0'
           arch: x86_64
-          target: google_apis
+          target: ${{ matrix.target }}
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell getprop ro.build.version.release
             adb shell getprop ro.build.version.sdk
+            adb shell getconf PAGE_SIZE
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 37
             python3 release/poco/tests/android_smoke.py output/RedmiVision-V8.8.apk com.poco.visioncoprocessor.v88
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: poco-v88-android17-runtime-logs
+          name: poco-v88-android17-runtime-logs-${{ matrix.target }}
           path: release/poco/tests/android-*-logcat.txt
           retention-days: 90

@@ -30,11 +30,17 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: redmi-vision-v88-debug-keystore-v1
+      - name: Install headless GPU validation libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libgles2 libgl1-mesa-dri glslang-tools
       - name: Verify controller, tracking, topology and pixels
         working-directory: custom
         run: |
           bash release/poco/tests/run.sh
-          VISION_GLES_LIBRARY=libGL.so.1 python3 release/poco/tests/shader_pixels.py
+          python3 release/poco/tests/shader_pixels.py
+          glslangValidator -l release/poco/v84/shaders/composite.vert release/poco/v84/shaders/composite.frag
+          glslangValidator -l release/poco/v84/shaders/mesh.vert release/poco/v84/shaders/mesh.frag
           python3 release/poco/build_vision_shaders.py --check
       - name: Build Android app and matching POCO server
         run: |

@@ -27,8 +27,8 @@ android {
         }
     }
 
-    // Compressed native libraries are extracted by Package Manager. This avoids
-    // malformed mmap offsets when an APK is transferred or repackaged.
+    // Package Manager extracts compressed libraries instead of mapping them
+    // directly from ZIP offsets. Validate both packaging and signatures in CI.
     packaging {
         jniLibs {
             useLegacyPackaging = true

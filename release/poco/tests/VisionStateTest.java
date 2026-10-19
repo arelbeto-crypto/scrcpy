@@ -50,6 +50,6 @@ public final class VisionStateTest {
                 "Vertical prediction must be bounded by face height");
         check(moving.predictionX(current - 1000) == 0,
                 "Future timestamps must not extrapolate a mask backwards");
-        System.out.println("VisionStateTest: 9 behavior checks passed");
+        System.out.println("VisionStateTest: timing, session reset and bounded motion checks passed");
     }
 }

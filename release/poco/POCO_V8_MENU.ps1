@@ -18,10 +18,10 @@ function Camera([string]$id, [string[]]$extra) {
 }
 while ($true) {
     Write-Host ''
-    Write-Host 'POCO V8.5 / scrcpy 5.0.1 | Bokeh+ + Fast Tracking + Mask FX + Redmi Vision'
+    Write-Host 'POCO V8.5.1 / scrcpy 5.0.1 | Bokeh+ + Fast Tracking + Mask FX + Redmi Vision'
     Write-Host '[1] Camara ID0 auto | [2] MultiCam ID3 auto'
     Write-Host '[3] ID0 1080p 30fps | [4] ID3 1080p 30fps'
-    Write-Host '[5] Listar camaras | [6] Version | [7] Controles V8.5 | [8] Instalar Redmi Vision | [Q] Salir'
+    Write-Host '[5] Listar camaras | [6] Version | [7] Controles V8.5.1 | [8] Instalar Redmi Vision | [Q] Salir'
     switch ((Read-Host 'Opcion').ToUpperInvariant()) {
        '1' { Camera '0' @() }
        '2' { Camera '3' @() }

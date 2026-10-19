@@ -95,7 +95,22 @@ public final class VisionBridgeTest {
                 }
                 await(() -> writerCount() == 0, "Idle reconnects must not accumulate writer threads");
             }
-            System.out.println("VisionBridgeTest: compression/response session races and 9 idle disconnects passed");
+            try (Socket socket = connect()) {
+                socket.setSoTimeout(2000);
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                check(packet(in) == 1 && packet(in) == 2, "Legacy handshake");
+                bridge.onSession(480, 640);
+                boolean closed = false;
+                try { packet(in); } catch (java.io.EOFException expected) { closed = true; }
+                check(closed, "A legacy peer without source timestamps must reconnect across session changes");
+            }
+            try (Socket socket = connect()) {
+                socket.setSoTimeout(2000);
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                check(packet(in) == 1 && packet(in) == 2, "Legacy reconnect after changed session");
+            }
+            await(() -> writerCount() == 0, "Legacy session reset must also terminate its writer");
+            System.out.println("VisionBridgeTest: compression/response races, legacy reset, and 11 disconnects passed");
         } finally {
             if (Bitmap.resume != null) Bitmap.resume.countDown();
             bridge.stop();

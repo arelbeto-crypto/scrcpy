@@ -111,6 +111,11 @@ public final class VisionBridge implements Closeable {
             lastAnalysisUs = 0;
             Client c = client;
             if (c != null) {
+                if (!c.sourceClock) {
+                    // Legacy replies have no usable source clock. Reconnect to fence all old replies.
+                    c.close();
+                    return;
+                }
                 c.resetForSession();
                 c.enqueue(Message.session(width, height));
             }

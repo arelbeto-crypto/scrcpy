@@ -126,7 +126,7 @@ jobs:
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.ps1 release/work/build-win64/dist/
           cp ../custom/release/poco/INSTALAR_REDMI_VISION.bat release/work/build-win64/dist/
           cp ../custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk release/work/build-win64/dist/RedmiVisionCoprocessor.apk
-          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.6 Camera2 + Smart Zoom + Redmi ML coprocessor + buffer-mode YUV decoder + 640px inference + stable TCP + stronger bokeh + Mask FX + software decode default
+          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.6 Camera2 + Smart Zoom + Redmi ML coprocessor + buffer-mode YUV decoder + 640px inference + stable TCP + stronger bokeh + Mask FX + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
           release/package_client.sh win64 zip
       - uses: actions/upload-artifact@v7
         with:

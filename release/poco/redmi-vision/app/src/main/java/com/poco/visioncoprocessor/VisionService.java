@@ -805,7 +805,7 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "V8.6.1.1: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        "V8.6.1: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
                         faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);

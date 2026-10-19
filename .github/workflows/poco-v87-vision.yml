@@ -1,0 +1,195 @@
+name: POCO V8.7 Dense Mesh Clean Analysis Backgrounds Windows
+
+on:
+  push:
+    branches: [camera-vision-v87-polish]
+    paths:
+      - 'release/poco/APPLY_V8_CAMERA_PRO_PATCH.py'
+      - 'release/poco/APPLY_V8_AR_PATCH.py'
+      - 'release/poco/POCO_V8_MENU.ps1'
+      - 'release/poco/POCO_V8_MENU.bat'
+      - 'release/poco/CONTROLES_AR_V81.txt'
+      - 'release/poco/CONTROLES_AR_V82.txt'
+      - 'release/poco/CONTROLES_AR_V83.txt'
+      - 'release/poco/CONTROLES_AR_V84.txt'
+      - 'release/poco/CONTROLES_AR_V85.txt'
+      - 'release/poco/CONTROLES_AR_V87.txt'
+      - 'release/poco/build_vision_shaders.py'
+      - 'release/poco/tests/**'
+      - 'release/poco/APPLY_V84_REMOTE_VISION_PATCH.py'
+      - 'release/poco/v84/**'
+      - 'release/poco/redmi-vision/**'
+      - 'release/poco/INSTALAR_REDMI_VISION.ps1'
+      - 'release/poco/INSTALAR_REDMI_VISION.bat'
+      - '.github/workflows/poco-v87-vision.yml'
+  workflow_dispatch:
+
+jobs:
+  build-win64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Fetch custom POCO V8 files
+        uses: actions/checkout@v6
+        with:
+          path: custom
+      - name: Fetch official scrcpy 5.0.1 source
+        uses: actions/checkout@v6
+        with:
+          repository: Genymobile/scrcpy
+          ref: v5.0.1
+          path: scrcpy5
+          persist-credentials: false
+      - name: Port POCO V7 AR overlay to scrcpy 5.0.1
+        run: |
+          mkdir -p scrcpy5/release/poco
+          cp custom/release/poco/APPLY_V8_AR_PATCH.py scrcpy5/release/poco/
+          cd scrcpy5
+          python3 release/poco/APPLY_V8_AR_PATCH.py
+          grep -q 'POCO V8 AR shortcuts' app/src/input_manager.c
+          grep -q 'sc_screen_render_camera_ar_overlay' app/src/screen.c
+      - name: Port Camera2 controls Smart Zoom scenes and preserved aliases
+        run: |
+          cp custom/release/poco/APPLY_V8_CAMERA_PRO_PATCH.py scrcpy5/release/poco/
+          cd scrcpy5
+          python3 release/poco/APPLY_V8_CAMERA_PRO_PATCH.py
+          grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_PRO' app/src/control_msg.h
+          grep -q 'SC_CONTROL_MSG_TYPE_CAMERA_METERING' app/src/control_msg.h
+          grep -q 'case SDLK_PAGEUP' app/src/input_manager.c
+          grep -q 'POCO V8.3: Alt+S=Smart Zoom' app/src/input_manager.c
+          grep -q 'applyProCommand' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'applyProMetering' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'proUpdateMeasurements' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'proUpdateSmartZoom' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'PRO_SCENE' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'PRO_ZOOM_PRESET' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'proResetSceneProcessing' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'deadZone' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+      - name: Port V8.6 Redmi Vision resilient YUV bridge
+        run: |
+          cp custom/release/poco/APPLY_V84_REMOTE_VISION_PATCH.py scrcpy5/release/poco/
+          cp -r custom/release/poco/v84 scrcpy5/release/poco/
+          cd scrcpy5
+          python3 release/poco/APPLY_V84_REMOTE_VISION_PATCH.py
+          grep -q 'VisionBridge' server/src/main/java/com/genymobile/scrcpy/device/Streamer.java
+          grep -q 'VisionCompositeOpenGLFilter' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'PRO_BOKEH_TOGGLE' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'POCO V8.4 phone-side AR cycle' app/src/input_manager.c
+          grep -q 'MSG_FACE' server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java
+          grep -q 'subject_edge' server/src/main/java/com/genymobile/scrcpy/opengl/VisionShaders.java
+          grep -q 'reserveAnalysisFrame' server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java
+          grep -q 'PRO_BACKGROUND_CYCLE' server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java
+          grep -q 'decoder YUV flexible' ../custom/release/poco/redmi-vision/app/src/main/java/com/poco/visioncoprocessor/VisionService.java
+          test -f server/src/main/java/com/genymobile/scrcpy/video/RemoteVisionState.java
+          test -f server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java
+          test -f server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            scrcpy5/**/*.gradle*
+            custom/release/poco/redmi-vision/**/*.gradle*
+      - name: Verify timing topology association and generated shaders
+        working-directory: custom
+        run: |
+          bash release/poco/tests/run.sh
+          python3 release/poco/build_vision_shaders.py --check
+      - name: Keep a stable sideload signing key for Redmi Vision
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: redmi-vision-debug-keystore-v1
+      - name: Build Redmi Note 10 Pro vision coprocessor APK
+        run: |
+          chmod +x custom/gradlew
+          custom/gradlew -p custom/release/poco/redmi-vision :app:assembleRelease --stacktrace
+          test -f custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk
+      - name: Install native cross-compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build nasm mingw-w64 mingw-w64-tools libz-mingw-w64-dev glslang-tools libegl1 libgles2 libgl1-mesa-dri
+      - name: Verify actual GLES pixel behavior and external-camera shaders
+        working-directory: custom
+        run: |
+          python3 release/poco/tests/shader_pixels.py
+          glslangValidator -l release/poco/v84/shaders/composite.vert release/poco/v84/shaders/composite.frag
+          glslangValidator -l release/poco/v84/shaders/mesh.vert release/poco/v84/shaders/mesh.frag
+      - uses: actions/cache@v4
+        with:
+          path: scrcpy5/app/deps/work
+          key: poco-v8-scrcpy501-win64-${{ hashFiles('scrcpy5/app/deps/*.sh', 'scrcpy5/app/deps/_*', 'scrcpy5/cross_win64.txt') }}
+      - name: Build Android server and Windows client from identical upstream release
+        working-directory: scrcpy5
+        run: |
+          chmod +x gradlew
+          release/build_server.sh
+          release/build_windows.sh 64
+      - name: Package portable Windows V8
+        working-directory: scrcpy5
+        env:
+          VERSION: 5.0.1-poco87-vision
+        run: |
+          cp ../custom/release/poco/POCO_V8_MENU.ps1 release/work/build-win64/dist/
+          cp ../custom/release/poco/POCO_V8_MENU.bat release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V8.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V81.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V82.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V83.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V84.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V85.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/CONTROLES_AR_V87.txt release/work/build-win64/dist/
+          cp ../custom/release/poco/INSTALAR_REDMI_VISION.ps1 release/work/build-win64/dist/
+          cp ../custom/release/poco/INSTALAR_REDMI_VISION.bat release/work/build-win64/dist/
+          cp ../custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk release/work/build-win64/dist/RedmiVisionCoprocessor.apk
+          printf '%s\n' 'Base: upstream scrcpy v5.0.1' 'Customization: POCO V8.7 Camera2 + preserved controls + clean pre-effect analysis + 468-point face mesh + GPU backgrounds + foreground-aware bokeh + software decode default' 'Manual Camera2 capabilities vary by lens and phone' "Commit: ${GITHUB_SHA}" "Build: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > release/work/build-win64/dist/BUILD_INFO_V8.txt
+          release/package_client.sh win64 zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scrcpy-camera-ar-poco-v87-redmi-vision-scrcpy-5.0.1-win64
+          path: scrcpy5/release/output/*.zip
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v7
+        with:
+          name: RedmiVisionCoprocessor-v87-apk
+          path: custom/release/poco/redmi-vision/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+  smoke-windows:
+    needs: build-win64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: scrcpy-camera-ar-poco-v87-redmi-vision-scrcpy-5.0.1-win64
+          path: package
+      - name: Verify portable EXE version and menu syntax
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem package -Filter *.zip | Select-Object -First 1
+          if (-not $zip) { throw 'Windows ZIP missing' }
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath unpacked
+          $exe = Get-ChildItem unpacked -Recurse -Filter scrcpy.exe | Select-Object -First 1
+          if (-not $exe) { throw 'scrcpy.exe missing' }
+          $version = & $exe.FullName --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '5\.0\.1') { throw "Version mismatch: $version" }
+          $help = & $exe.FullName --help 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $help -notmatch 'hwdec') { throw 'scrcpy 5 hardware decode option missing' }
+          foreach ($f in @('scrcpy-server', 'POCO_V8_MENU.ps1', 'POCO_V8_MENU.bat', 'CONTROLES_AR_V8.txt', 'CONTROLES_AR_V81.txt', 'CONTROLES_AR_V82.txt', 'CONTROLES_AR_V83.txt', 'CONTROLES_AR_V84.txt', 'CONTROLES_AR_V85.txt', 'CONTROLES_AR_V87.txt', 'RedmiVisionCoprocessor.apk', 'INSTALAR_REDMI_VISION.ps1', 'INSTALAR_REDMI_VISION.bat', 'BUILD_INFO_V8.txt')) {
+            if (!(Test-Path (Join-Path $exe.DirectoryName $f))) { throw "$f missing" }
+          }
+          $tokens = $null
+          $parseErrors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $tokens2 = $null
+          $parseErrors2 = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $exe.DirectoryName 'INSTALAR_REDMI_VISION.ps1'), [ref]$tokens2, [ref]$parseErrors2)
+          if ($parseErrors2.Count) { throw ($parseErrors2 | Out-String) }
+          if ((Get-Item (Join-Path $exe.DirectoryName 'RedmiVisionCoprocessor.apk')).Length -lt 1000000) { throw 'Redmi APK unexpectedly small' }
+          Write-Host $version
+          if ((Get-Content (Join-Path $exe.DirectoryName 'POCO_V8_MENU.ps1') -Raw) -notmatch '--hwdec=disabled') { throw 'software decode default missing' }
+          Write-Host 'V8.6 Windows packaging smoke test passed'

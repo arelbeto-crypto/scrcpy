@@ -7,6 +7,8 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PointF;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.media.Image;
 import android.media.MediaCodec;
@@ -20,11 +22,13 @@ import android.os.SystemClock;
 
 import com.google.android.gms.tasks.Task;
 import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.face.Face;
-import com.google.mlkit.vision.face.FaceDetection;
-import com.google.mlkit.vision.face.FaceDetector;
-import com.google.mlkit.vision.face.FaceDetectorOptions;
-import com.google.mlkit.vision.face.FaceLandmark;
+import com.google.mlkit.vision.facemesh.FaceMesh;
+import com.google.mlkit.vision.facemesh.FaceMeshPoint;
+import com.google.mlkit.vision.facemesh.FaceMeshDetection;
+import com.google.mlkit.vision.facemesh.FaceMeshDetector;
+import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions;
+import com.google.mlkit.vision.common.Triangle;
+import com.google.mlkit.vision.common.PointF3D;
 import com.google.mlkit.vision.segmentation.Segmentation;
 import com.google.mlkit.vision.segmentation.SegmentationMask;
 import com.google.mlkit.vision.segmentation.Segmenter;
@@ -71,8 +75,10 @@ public final class VisionService extends Service {
     private static final int MSG_HELLO = 1;
     private static final int MSG_SESSION = 2;
     private static final int MSG_VIDEO = 3;
+    private static final int MSG_ANALYSIS_JPEG = 4;
     private static final int MSG_MASK = 16;
     private static final int MSG_FACE = 17;
+    private static final int MSG_CAPABILITIES = 32;
 
     private static final int FLAG_CONFIG = 1;
     private static final int FLAG_KEY = 2;
@@ -93,7 +99,11 @@ public final class VisionService extends Service {
     private volatile DataOutputStream activeOut;
 
     private Segmenter segmenter;
-    private FaceDetector faceDetector;
+    private FaceMeshDetector faceDetector;
+    private volatile int streamEpoch;
+    private volatile long lastSourcePts;
+    private float[] previousFace;
+    private boolean cleanAnalysisInput;
     private ExecutorService inferenceExecutor;
 
     private MediaCodec decoder;
@@ -134,16 +144,7 @@ public final class VisionService extends Service {
                         .build();
         segmenter = Segmentation.getClient(segmentationOptions);
 
-        FaceDetectorOptions faceOptions =
-                new FaceDetectorOptions.Builder()
-                        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-                        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-                        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-                        .setMinFaceSize(0.08f)
-                        .enableTracking()
-                        .build();
-        faceDetector = FaceDetection.getClient(faceOptions);
+        faceDetector = FaceMeshDetection.getClient(FaceMeshDetectorOptions.DEFAULT_OPTIONS);
 
         inferenceExecutor = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "redmi-vision-inference");
@@ -196,7 +197,7 @@ public final class VisionService extends Service {
         while (running.get()) {
             String host = requestedHost;
             if (host.isEmpty()) {
-                status = "Buscando POCO V8.6 por Wi-Fi...";
+                status = "Buscando POCO V8.7 por Wi-Fi...";
                 host = discoverHost();
             }
             if (!running.get()) {
@@ -286,6 +287,9 @@ public final class VisionService extends Service {
                 case MSG_VIDEO:
                     readVideo(in, payloadSize);
                     break;
+                case MSG_ANALYSIS_JPEG:
+                    readAnalysisImage(in, payloadSize);
+                    break;
                 default:
                     skipFully(in, payloadSize);
                     break;
@@ -301,7 +305,8 @@ public final class VisionService extends Service {
         int codecId = in.readInt();
         int width = in.readInt();
         int height = in.readInt();
-        skipFully(in, size - 16);
+        cleanAnalysisInput = size >= 20 && (in.readInt() & 1) != 0;
+        skipFully(in, size - (size >= 20 ? 20 : 16));
 
         if (protocol != 1) {
             throw new IOException("Version de protocolo no compatible: " + protocol);
@@ -309,7 +314,15 @@ public final class VisionService extends Service {
         if (codecId != H264_CODEC_ID) {
             throw new IOException("El coprocesador V8.6 requiere H.264");
         }
-        if (width > 0 && height > 0) {
+        synchronized (outputLock) {
+            DataOutputStream out = activeOut;
+            if (out != null) {
+                out.writeInt(MAGIC); out.writeByte(MSG_CAPABILITIES); out.writeInt(4);
+                out.writeInt(3); // clean JPEG analysis + echo POCO source timestamps
+                out.flush();
+            }
+        }
+        if (!cleanAnalysisInput && width > 0 && height > 0) {
             streamWidth = width;
             streamHeight = height;
             tryConfigureDecoder(width, height);
@@ -323,9 +336,34 @@ public final class VisionService extends Service {
         int width = in.readInt();
         int height = in.readInt();
         skipFully(in, size - 8);
+        ++streamEpoch;
+        lastSourcePts = 0;
+        previousFace = null;
         streamWidth = width;
         streamHeight = height;
-        tryConfigureDecoder(width, height);
+        if (!cleanAnalysisInput) tryConfigureDecoder(width, height);
+        else releaseDecoder();
+    }
+
+    private void readAnalysisImage(DataInputStream in, int size) throws IOException {
+        if (size < 20 || size > 1024 * 1024) throw new IOException("Imagen de analisis invalida");
+        long ptsUs = in.readLong();
+        int width = in.readInt(), height = in.readInt(), length = in.readInt();
+        if (width < 2 || height < 2 || width > 1024 || height > 1024
+                || width * height > 640 * 640 || length <= 0 || length != size - 20) {
+            throw new IOException("Dimensiones de analisis invalidas");
+        }
+        byte[] bytes = new byte[length];
+        in.readFully(bytes);
+        if (ptsUs <= lastSourcePts || (faceBusy.get() && segmentationBusy.get())) return;
+        lastSourcePts = ptsUs;
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+        if (bounds.outWidth != width || bounds.outHeight != height) throw new IOException("JPEG no coincide con su cabecera");
+        Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        if (bitmap == null) return;
+        processInput(InputImage.fromBitmap(bitmap, 0), width, height, ptsUs, bitmap);
     }
 
     private void tryConfigureDecoder(int width, int height) {
@@ -524,7 +562,7 @@ public final class VisionService extends Service {
                     try {
                         image = decoder.getOutputImage(index);
                         if (image != null) {
-                            processDecodedImage(image);
+                            processDecodedImage(image, info.presentationTimeUs);
                         }
                     } catch (RuntimeException e) {
                         status = "Frame YUV descartado: "
@@ -550,47 +588,49 @@ public final class VisionService extends Service {
         }
     }
 
-    private void processDecodedImage(Image image) {
+    private void processDecodedImage(Image image, long ptsUs) {
+        if (faceBusy.get() && segmentationBusy.get()) return;
+        Nv21Frame frame;
+        try { frame = imageToNv21Downscaled(image, 640); }
+        catch (RuntimeException e) { return; }
+        if (frame != null) processInput(InputImage.fromByteArray(frame.data, frame.width, frame.height,
+                0, InputImage.IMAGE_FORMAT_NV21), frame.width, frame.height, ptsUs, null);
+    }
+
+    private void processInput(InputImage input, int width, int height, long ptsUs, Bitmap bitmap) {
         boolean doFace = faceBusy.compareAndSet(false, true);
         boolean doSegmentation = segmentationBusy.compareAndSet(false, true);
         if (!doFace && !doSegmentation) {
+            if (bitmap != null) bitmap.recycle();
             return;
         }
-
-        Nv21Frame frame;
-        try {
-            frame = imageToNv21Downscaled(image, 640);
-        } catch (RuntimeException e) {
-            if (doFace) faceBusy.set(false);
-            if (doSegmentation) segmentationBusy.set(false);
-            return;
-        }
-
-        if (frame == null) {
-            if (doFace) faceBusy.set(false);
-            if (doSegmentation) segmentationBusy.set(false);
-            return;
-        }
-
+        final int epoch = streamEpoch;
+        final DataOutputStream output = activeOut;
+        final AtomicInteger remaining = new AtomicInteger((doFace ? 1 : 0) + (doSegmentation ? 1 : 0));
+        final Runnable releaseImage = () -> {
+            if (remaining.decrementAndGet() == 0 && bitmap != null) bitmap.recycle();
+        };
         final long startedMs = SystemClock.elapsedRealtime();
-        final InputImage input = InputImage.fromByteArray(
-                frame.data, frame.width, frame.height, 0, InputImage.IMAGE_FORMAT_NV21);
 
         if (doFace) {
             try {
                 faceDetector.process(input)
                         .addOnCompleteListener(inferenceExecutor, task -> {
                             try {
-                                List<Face> faces = task.isSuccessful() ? task.getResult() : null;
-                                sendFaceResult(faces, frame.width, frame.height, startedMs);
+                                List<FaceMesh> faces = task.isSuccessful() ? task.getResult() : null;
+                                if (epoch == streamEpoch && output == activeOut && running.get()) {
+                                    sendFaceResult(faces, width, height, startedMs, ptsUs, output);
+                                }
                             } catch (RuntimeException e) {
                                 status = "Tracking: " + e.getMessage();
                             } finally {
                                 faceBusy.set(false);
+                                releaseImage.run();
                             }
                         });
             } catch (RuntimeException e) {
                 faceBusy.set(false);
+                releaseImage.run();
             }
         }
 
@@ -600,17 +640,19 @@ public final class VisionService extends Service {
                         .addOnCompleteListener(inferenceExecutor, task -> {
                             try {
                                 SegmentationMask mask = task.isSuccessful() ? task.getResult() : null;
-                                if (mask != null) {
-                                    sendMaskResult(mask, startedMs);
+                                if (mask != null && epoch == streamEpoch && output == activeOut && running.get()) {
+                                    sendMaskResult(mask, startedMs, ptsUs, output);
                                 }
                             } catch (RuntimeException e) {
                                 status = "Segmentacion: " + e.getMessage();
                             } finally {
                                 segmentationBusy.set(false);
+                                releaseImage.run();
                             }
                         });
             } catch (RuntimeException e) {
                 segmentationBusy.set(false);
+                releaseImage.run();
             }
         }
     }
@@ -695,22 +737,22 @@ public final class VisionService extends Service {
         }
     }
 
-    private void sendFaceResult(List<Face> faces, int imageWidth, int imageHeight,
-                                long startedMs) {
+    private void sendFaceResult(List<FaceMesh> faces, int imageWidth, int imageHeight,
+                                long startedMs, long ptsUs, DataOutputStream out) {
         FaceData face = selectFace(faces, imageWidth, imageHeight);
         long now = SystemClock.elapsedRealtime();
         int latencyMs = (int) Math.min(Integer.MAX_VALUE, now - startedMs);
         updateFaceFps(now);
 
-        DataOutputStream out = activeOut;
-        if (out == null) {
+        if (out == null || out != activeOut) {
             return;
         }
 
-        long ptsUs = System.nanoTime() / 1000L;
         synchronized (outputLock) {
             try {
-                int bodySize = 8 + 4 + 4 + 10 * 4;
+                int pointCount = face.mesh != null ? face.mesh.length / 3 : 0;
+                int triangleCount = face.triangles != null ? face.triangles.length : 0;
+                int bodySize = 64 + pointCount * 12 + triangleCount * 2;
                 out.writeInt(MAGIC);
                 out.writeByte(MSG_FACE);
                 out.writeInt(bodySize);
@@ -728,6 +770,10 @@ public final class VisionService extends Service {
                 out.writeFloat(face.rightEyeY);
                 out.writeFloat(face.mouthX);
                 out.writeFloat(face.mouthY);
+                out.writeInt(pointCount);
+                if (face.mesh != null) for (float coordinate : face.mesh) out.writeFloat(coordinate);
+                out.writeInt(triangleCount);
+                if (face.triangles != null) for (short index : face.triangles) out.writeShort(index & 0xFFFF);
                 out.flush();
             } catch (IOException e) {
                 closeQuietly(activeSocket);
@@ -735,7 +781,7 @@ public final class VisionService extends Service {
         }
     }
 
-    private void sendMaskResult(SegmentationMask mask, long startedMs) {
+    private void sendMaskResult(SegmentationMask mask, long startedMs, long ptsUs, DataOutputStream out) {
         int maskWidth = mask.getWidth();
         int maskHeight = mask.getHeight();
         int count = maskWidth * maskHeight;
@@ -758,14 +804,9 @@ public final class VisionService extends Service {
         int latencyMs = (int) Math.min(Integer.MAX_VALUE, now - startedMs);
         updateFps(now);
 
-        DataOutputStream out = activeOut;
-        if (out == null) {
+        if (out == null || out != activeOut) {
             return;
         }
-
-        // The exact source PTS is not exposed by ImageReader. The bridge uses
-        // this timestamp for freshness only, not A/V synchronization.
-        long ptsUs = System.nanoTime() / 1000L;
 
         synchronized (outputLock) {
             try {
@@ -796,7 +837,7 @@ public final class VisionService extends Service {
                 out.flush();
 
                 status = String.format(Locale.ROOT,
-                        "V8.6: tracking %.1f fps | mask %.1f fps | %d ms | %dx%d",
+                        "V8.7: malla 468 %.1f fps | mask %.1f fps | %d ms | %dx%d",
                         faceFps, inferenceFps, latencyMs, maskWidth, maskHeight);
             } catch (IOException e) {
                 closeQuietly(activeSocket);
@@ -824,57 +865,48 @@ public final class VisionService extends Service {
         }
     }
 
-    private static FaceData selectFace(List<Face> faces, int width, int height) {
-        if (faces == null || faces.isEmpty() || width <= 0 || height <= 0) {
-            return FaceData.NONE;
+    private FaceData selectFace(List<FaceMesh> faces, int width, int height) {
+        if (faces == null || faces.isEmpty() || width <= 0 || height <= 0) return FaceData.NONE;
+        float[][] boxes = new float[faces.size()][4];
+        for (int i = 0; i < faces.size(); i++) {
+            Rect box = faces.get(i).getBoundingBox();
+            boxes[i] = new float[] {box.left / (float) width, box.top / (float) height,
+                    box.width() / (float) width, box.height() / (float) height};
         }
-
-        Face best = null;
-        long bestArea = 0;
-        for (Face face : faces) {
-            Rect box = face.getBoundingBox();
-            long area = (long) box.width() * box.height();
-            if (area > bestArea) {
-                bestArea = area;
-                best = face;
-            }
+        int selected = FaceSelection.select(boxes, previousFace);
+        if (selected < 0) return FaceData.NONE;
+        previousFace = boxes[selected];
+        FaceMesh best = faces.get(selected);
+        List<FaceMeshPoint> points = best.getAllPoints();
+        if (points.size() < 468 || points.size() > 478) return FaceData.NONE;
+        float[] mesh = new float[points.size() * 3];
+        for (FaceMeshPoint point : points) {
+            int i = point.getIndex() * 3;
+            if (i < 0 || i + 2 >= mesh.length) return FaceData.NONE;
+            PointF3D point3D = point.getPosition();
+            mesh[i] = point3D.getX() / width;
+            mesh[i + 1] = point3D.getY() / height;
+            mesh[i + 2] = point3D.getZ() / width;
         }
-        if (best == null) {
-            return FaceData.NONE;
+        float lx = (mesh[33 * 3] + mesh[133 * 3]) * .5f;
+        float ly = (mesh[33 * 3 + 1] + mesh[133 * 3 + 1]) * .5f;
+        float rx = (mesh[263 * 3] + mesh[362 * 3]) * .5f;
+        float ry = (mesh[263 * 3 + 1] + mesh[362 * 3 + 1]) * .5f;
+        if (lx > rx) { float t = lx; lx = rx; rx = t; t = ly; ly = ry; ry = t; }
+        float[] box = boxes[selected];
+        FaceData face = new FaceData(box[0], box[1], box[2], box[3], lx, ly, rx, ry,
+                (mesh[13 * 3] + mesh[14 * 3]) * .5f,
+                (mesh[13 * 3 + 1] + mesh[14 * 3 + 1]) * .5f);
+        List<Triangle<FaceMeshPoint>> triangles = best.getAllTriangles();
+        if (triangles.size() > 3000) return FaceData.NONE;
+        short[] indices = new short[triangles.size() * 3];
+        int index = 0;
+        for (Triangle<FaceMeshPoint> triangle : triangles) {
+            for (FaceMeshPoint point : triangle.getAllPoints()) indices[index++] = (short) point.getIndex();
         }
-
-        Rect box = best.getBoundingBox();
-        float x = box.left / (float) width;
-        float y = box.top / (float) height;
-        float w = box.width() / (float) width;
-        float h = box.height() / (float) height;
-
-        float[] leftEye = landmark(best, FaceLandmark.LEFT_EYE, width, height);
-        float[] rightEye = landmark(best, FaceLandmark.RIGHT_EYE, width, height);
-        float[] mouth = landmark(best, FaceLandmark.MOUTH_BOTTOM, width, height);
-
-        if (leftEye == null) {
-            leftEye = new float[]{x + w * 0.34f, y + h * 0.40f};
-        }
-        if (rightEye == null) {
-            rightEye = new float[]{x + w * 0.66f, y + h * 0.40f};
-        }
-        if (mouth == null) {
-            mouth = new float[]{x + w * 0.50f, y + h * 0.70f};
-        }
-
-        return new FaceData(x, y, w, h,
-                leftEye[0], leftEye[1], rightEye[0], rightEye[1],
-                mouth[0], mouth[1]);
-    }
-
-    private static float[] landmark(Face face, int type, int width, int height) {
-        FaceLandmark landmark = face.getLandmark(type);
-        if (landmark == null) {
-            return null;
-        }
-        PointF point = landmark.getPosition();
-        return new float[]{point.x / width, point.y / height};
+        face.mesh = mesh;
+        face.triangles = indices;
+        return face;
     }
 
     private static byte[] deflate(byte[] input) {
@@ -934,7 +966,7 @@ public final class VisionService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder
-                .setContentTitle("Redmi Vision Coprocessor V8.6")
+                .setContentTitle("Redmi Vision Coprocessor V8.7")
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)
@@ -949,6 +981,7 @@ public final class VisionService extends Service {
 
     @Override
     public void onDestroy() {
+        ++streamEpoch;
         running.set(false);
         closeQuietly(activeSocket);
         if (networkThread != null) {
@@ -1029,6 +1062,8 @@ public final class VisionService extends Service {
         final float rightEyeY;
         final float mouthX;
         final float mouthY;
+        float[] mesh;
+        short[] triangles;
 
         FaceData(float x, float y, float w, float h,
                  float leftEyeX, float leftEyeY,

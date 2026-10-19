@@ -35,11 +35,24 @@ public final class RemoteVisionState {
         public final float mouthY;
         public final boolean remote;
         public final long receivedNs;
+        public final long ptsUs;
+        public final float velocityX;
+        public final float velocityY;
+        public final float[] mesh;
+        public final short[] triangles;
 
         FaceFrame(float x, float y, float w, float h,
                   float leftEyeX, float leftEyeY,
                   float rightEyeX, float rightEyeY,
                   float mouthX, float mouthY, boolean remote) {
+            this(x, y, w, h, leftEyeX, leftEyeY, rightEyeX, rightEyeY,
+                    mouthX, mouthY, remote, System.nanoTime() / 1000, 0, 0, null, null);
+        }
+
+        FaceFrame(float x, float y, float w, float h,
+                  float leftEyeX, float leftEyeY, float rightEyeX, float rightEyeY,
+                  float mouthX, float mouthY, boolean remote, long ptsUs,
+                  float velocityX, float velocityY, float[] mesh, short[] triangles) {
             this.x = clamp01(x);
             this.y = clamp01(y);
             this.w = clamp01(w);
@@ -52,6 +65,11 @@ public final class RemoteVisionState {
             this.mouthY = mouthY;
             this.remote = remote;
             this.receivedNs = System.nanoTime();
+            this.ptsUs = ptsUs;
+            this.velocityX = velocityX;
+            this.velocityY = velocityY;
+            this.mesh = mesh;
+            this.triangles = triangles;
         }
 
         private static float clamp01(float v) {
@@ -60,9 +78,9 @@ public final class RemoteVisionState {
     }
 
     private static final RemoteVisionState INSTANCE = new RemoteVisionState();
-    private static final long REMOTE_FACE_MAX_AGE_NS = 450_000_000L;
-    private static final long CAMERA_FACE_MAX_AGE_NS = 600_000_000L;
-    private static final long MASK_MAX_AGE_NS = 900_000_000L;
+    private static final long REMOTE_FACE_MAX_AGE_NS = 300_000_000L;
+    private static final long CAMERA_FACE_MAX_AGE_NS = 180_000_000L;
+    private static final long MASK_MAX_AGE_NS = 350_000_000L;
 
     private volatile MaskFrame maskFrame;
     private volatile FaceFrame remoteFace;
@@ -72,10 +90,12 @@ public final class RemoteVisionState {
     private volatile float remoteFps;
     private volatile int remoteLatencyMs;
     private volatile long maskGeneration;
+    private long lastFacePtsUs;
 
     private volatile boolean bokehEnabled = true;
     private volatile int bokehLevel = 2;
     private volatile int arMode;
+    private volatile int backgroundMode;
 
     private RemoteVisionState() {
     }
@@ -84,13 +104,26 @@ public final class RemoteVisionState {
         return INSTANCE;
     }
 
-    public void setConnected(boolean connected, String peer) {
+    public synchronized void setConnected(boolean connected, String peer) {
         this.connected = connected;
         this.peer = peer != null ? peer : "-";
         if (!connected) {
             remoteFps = 0;
             remoteLatencyMs = 0;
+            resetTracking();
         }
+    }
+
+    public synchronized void resetTracking() {
+        maskFrame = null;
+        remoteFace = null;
+        cameraFace = null;
+        lastFacePtsUs = 0;
+    }
+
+    private static boolean fresh(long ptsUs, long maxAgeNs) {
+        long ageUs = System.nanoTime() / 1000 - ptsUs;
+        return ptsUs > 0 && ageUs >= -100_000 && ageUs <= maxAgeNs / 1000;
     }
 
     public boolean isConnected() {
@@ -102,12 +135,18 @@ public final class RemoteVisionState {
         remoteLatencyMs = latencyMs;
     }
 
-    public void updateMask(byte[] mask, int width, int height, long ptsUs,
+    public int getRemoteLatencyMs() { return remoteLatencyMs; }
+
+    public synchronized void updateMask(byte[] mask, int width, int height, long ptsUs,
                            float fps, int latencyMs) {
-        if (mask == null || width <= 0 || height <= 0 || mask.length != width * height) {
+        if (mask == null || width <= 0 || height <= 0 || width > 1024 || height > 1024
+                || mask.length != width * height || !fresh(ptsUs, MASK_MAX_AGE_NS)) {
             return;
         }
         MaskFrame previous = maskFrame;
+        if (previous != null && ptsUs <= previous.ptsUs) {
+            return;
+        }
         byte[] stable = mask;
         if (previous != null && previous.width == width && previous.height == height
                 && previous.mask.length == mask.length
@@ -118,7 +157,9 @@ public final class RemoteVisionState {
             for (int i = 0; i < mask.length; ++i) {
                 int oldValue = previous.mask[i] & 0xFF;
                 int newValue = mask[i] & 0xFF;
-                stable[i] = (byte) ((oldValue * 3 + newValue * 7 + 5) / 10);
+                // Smooth stationary confidence noise, but follow moving edges immediately.
+                stable[i] = (byte) (Math.abs(oldValue - newValue) < 24
+                        ? (oldValue * 2 + newValue * 8 + 5) / 10 : newValue);
             }
         }
         long generation = ++maskGeneration;
@@ -129,25 +170,58 @@ public final class RemoteVisionState {
 
     public MaskFrame getFreshMask() {
         MaskFrame frame = maskFrame;
-        if (frame == null || System.nanoTime() - frame.receivedNs > MASK_MAX_AGE_NS) {
+        if (frame == null || !fresh(frame.ptsUs, MASK_MAX_AGE_NS)) {
             return null;
         }
         return frame;
+    }
+
+    public float getMaskOpacity() {
+        MaskFrame frame = getFreshMask();
+        if (frame == null) return 0;
+        float ageMs = (System.nanoTime() / 1000 - frame.ptsUs) / 1000f;
+        return Math.max(0f, Math.min(1f, (350f - ageMs) / 130f));
     }
 
     public void updateRemoteFace(float x, float y, float w, float h,
                                  float leftEyeX, float leftEyeY,
                                  float rightEyeX, float rightEyeY,
                                  float mouthX, float mouthY) {
-        if (w <= 0 || h <= 0) {
+        updateRemoteFace(x, y, w, h, leftEyeX, leftEyeY, rightEyeX, rightEyeY,
+                mouthX, mouthY, System.nanoTime() / 1000, null, null);
+    }
+
+    public synchronized void updateRemoteFace(float x, float y, float w, float h,
+                                 float leftEyeX, float leftEyeY, float rightEyeX, float rightEyeY,
+                                 float mouthX, float mouthY, long ptsUs, float[] mesh, short[] triangles) {
+        if (!fresh(ptsUs, REMOTE_FACE_MAX_AGE_NS)) return;
+        FaceFrame old = remoteFace;
+        if (ptsUs <= lastFacePtsUs) return;
+        float[] values = {x, y, w, h, leftEyeX, leftEyeY, rightEyeX, rightEyeY, mouthX, mouthY};
+        for (float value : values) {
+            if (Float.isNaN(value) || Float.isInfinite(value)) return;
+        }
+        lastFacePtsUs = ptsUs;
+        if (w <= 0 || h <= 0 || w > 2 || h > 2) {
             remoteFace = null;
             return;
         }
-        FaceFrame old = remoteFace;
+        float velocityX = 0, velocityY = 0;
         if (old != null && System.nanoTime() - old.receivedNs < REMOTE_FACE_MAX_AGE_NS) {
             float delta = Math.abs(old.x - x) + Math.abs(old.y - y)
                     + Math.abs(old.w - w) + Math.abs(old.h - h);
-            float a = delta > 0.18f ? 0.92f : 0.78f;
+            float dt = Math.max(.001f, (ptsUs - old.ptsUs) / 1_000_000f);
+            // Adaptive low-pass: quiet when still, fast when moving. Never extrapolate a face switch.
+            float speed = delta / dt;
+            float a = Math.max(.35f, Math.min(.98f, 1f - (float)Math.exp(-dt * (12f + 40f * speed))));
+            if (delta < .30f && dt < .25f) {
+                velocityX = Math.max(-1.5f, Math.min(1.5f, (x - old.x) / dt));
+                velocityY = Math.max(-1.5f, Math.min(1.5f, (y - old.y) / dt));
+                velocityX = .6f * velocityX + .4f * old.velocityX;
+                velocityY = .6f * velocityY + .4f * old.velocityY;
+            } else {
+                a = 1f;
+            }
             float b = 1.0f - a;
             x = old.x * b + x * a;
             y = old.y * b + y * a;
@@ -159,9 +233,12 @@ public final class RemoteVisionState {
             rightEyeY = smooth(old.rightEyeY, rightEyeY, a);
             mouthX = smooth(old.mouthX, mouthX, a);
             mouthY = smooth(old.mouthY, mouthY, a);
+            if (mesh != null && old.mesh != null && mesh.length == old.mesh.length && delta < .30f) {
+                for (int i = 0; i < mesh.length; ++i) mesh[i] = old.mesh[i] * b + mesh[i] * a;
+            }
         }
         remoteFace = new FaceFrame(x, y, w, h, leftEyeX, leftEyeY,
-                                   rightEyeX, rightEyeY, mouthX, mouthY, true);
+                rightEyeX, rightEyeY, mouthX, mouthY, true, ptsUs, velocityX, velocityY, mesh, triangles);
     }
 
     private static float smooth(float oldValue, float newValue, float alpha) {
@@ -192,14 +269,22 @@ public final class RemoteVisionState {
     public FaceFrame getFreshFace() {
         long now = System.nanoTime();
         FaceFrame face = remoteFace;
-        if (face != null && now - face.receivedNs <= REMOTE_FACE_MAX_AGE_NS) {
+        if (face != null && fresh(face.ptsUs, REMOTE_FACE_MAX_AGE_NS)) {
             return face;
         }
+        if (connected) return null; // Do not jump to an unrelated sensor box while the remote tracker reacquires.
         face = cameraFace;
         if (face != null && now - face.receivedNs <= CAMERA_FACE_MAX_AGE_NS) {
             return face;
         }
         return null;
+    }
+
+    public int getBackgroundMode() { return backgroundMode; }
+
+    public int cycleBackground(int direction) {
+        backgroundMode = (backgroundMode + (direction < 0 ? 4 : 1)) % 5;
+        return backgroundMode;
     }
 
     public boolean isBokehEnabled() {
@@ -256,6 +341,7 @@ public final class RemoteVisionState {
                 + ", mask=" + (mask != null ? mask.width + "x" + mask.height : "none")
                 + ", face=" + (face != null ? (face.remote ? "Redmi" : "Camera2") : "none")
                 + ", bokeh=" + bokehEnabled + "/" + bokehLevel
-                + ", AR=" + arMode;
+                + ", AR=" + arMode
+                + ", fondo=" + backgroundMode;
     }
 }

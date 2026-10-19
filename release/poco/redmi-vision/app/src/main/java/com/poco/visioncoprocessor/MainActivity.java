@@ -51,7 +51,7 @@ public final class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("Redmi Vision Coprocessor V8.6");
+        title.setText("Redmi Vision Coprocessor V8.7");
         title.setTextSize(22);
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -95,6 +95,7 @@ public final class MainActivity extends Activity {
         shortcuts.setText("\nEn la ventana scrcpy de la Acer:\n"
                 + "Alt+V  Bokeh ON/OFF\n"
                 + "Alt+Shift+V  Intensidad bokeh\n"
+                + "Alt+G / Alt+Shift+G  Cambiar fondo\n"
                 + "Alt+Y  AR siguiente\n"
                 + "Alt+Shift+1..9  AR directo\n"
                 + "Alt+J  Estado del coprocesador en consola\n");

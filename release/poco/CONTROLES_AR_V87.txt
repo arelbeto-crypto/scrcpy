@@ -1,0 +1,27 @@
+POCO V8.7 / scrcpy 5.0.1 - Controles conservados y nuevos efectos
+
+CAMARA: clic=AF; Shift+clic=AE; Alt+A=AF automatico; Alt+K=bloqueo enfoque.
+Alt+Shift+A=AE automatico; Alt+L=bloqueo AE; Alt+Shift+L=bloqueo AWB.
+Alt+Izquierda/Derecha=enfoque; Alt+Shift+Izquierda/Derecha=ISO.
+Alt+Shift+Arriba/Abajo=obturacion; Alt+RePag/AvPag=EV; Alt+Arriba/Abajo=zoom.
+Alt+M=modo AF; Alt+H=capacidades; Alt+0=reiniciar ajustes; Alt+T=linterna.
+Alt+S=Smart Zoom; Alt+Shift+S=perfil; Alt+1..9=escenas; Alt+Ctrl+1..5=zoom.
+Se conservan aliases Alt+F/I/E y F1 muestra ayuda.
+
+EFECTOS EN EL POCO:
+Alt+Y / Alt+Shift+Y = siguiente/anterior mascara.
+Alt+Shift+1..9 = sin mascara, lentes, bigote, mascara 3D, halo, rubor, corazones, malla cyber, corona.
+Alt+V = activar/desactivar desenfoque. Alt+Shift+V = intensidad.
+Alt+G / Alt+Shift+G = siguiente/anterior fondo:
+  0: camara real (con bokeh si esta activo)
+  1: estudio azul/dorado
+  2: aurora animada
+  3: neon atardecer
+  4: cine calido
+Alt+J = diagnostico del coprocesador en consola.
+
+Usar el APK y scrcpy-server V8.7 juntos. La imagen para analizar se toma antes de los efectos.
+Los resultados antiguos caducan; al perder el rostro las mascaras se ocultan.
+Los fondos requieren segmentacion del Redmi. La Acer sigue con --hwdec=disabled y --no-audio.
+La lectura GPU de analisis se limita a 640 px y como maximo unas 12 muestras/s; la vista de camara conserva su FPS configurado.
+Los FPS y la alineacion fisica en POCO/Redmi aun deben comprobarse en los dispositivos reales.

@@ -10,8 +10,8 @@ android {
         applicationId = 'com.poco.visioncoprocessor'
         minSdk = 23
         targetSdk = 33
-        versionCode = 860
-        versionName = '8.6'
+        versionCode = 870
+        versionName = '8.7'
     }
 
     signingConfigs {
@@ -36,5 +36,5 @@ dependencies {
     // Both models are bundled: after installing the APK, inference does not
     // depend on Play Services downloading a model.
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
-    implementation 'com.google.mlkit:face-detection:16.1.7'
+    implementation 'com.google.mlkit:face-mesh-detection:16.0.0-beta1'
 }

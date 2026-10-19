@@ -46,8 +46,15 @@ copy_file("RemoteVisionState.java",
           "server/src/main/java/com/genymobile/scrcpy/video/RemoteVisionState.java")
 copy_file("VisionBridge.java",
           "server/src/main/java/com/genymobile/scrcpy/video/VisionBridge.java")
+copy_file("VisionFacePacket.java",
+          "server/src/main/java/com/genymobile/scrcpy/video/VisionFacePacket.java")
 copy_file("VisionCompositeOpenGLFilter.java",
           "server/src/main/java/com/genymobile/scrcpy/opengl/VisionCompositeOpenGLFilter.java")
+copy_file("RawAnalysisSampler.java",
+          "server/src/main/java/com/genymobile/scrcpy/opengl/RawAnalysisSampler.java")
+
+copy_file("VisionShaders.java", "server/src/main/java/com/genymobile/scrcpy/opengl/VisionShaders.java")
+copy_file("FaceMeshRenderer.java", "server/src/main/java/com/genymobile/scrcpy/opengl/FaceMeshRenderer.java")
 
 
 edit("server/src/main/java/com/genymobile/scrcpy/device/Streamer.java", [
@@ -137,10 +144,10 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
 """),
     ("new VisionCompositeOpenGLFilter",
      "            OpenGLFilter glFilter = new AffineOpenGLFilter(transform);\n",
-     "            OpenGLFilter glFilter = new VisionCompositeOpenGLFilter(transform, captureSize);\n"),
+     "            OpenGLFilter glFilter = new VisionCompositeOpenGLFilter(transform, captureSize, videoSize);\n"),
     ("private static final int PRO_REMOTE_AR_SET = 16;",
      "    private static final int PRO_SMART_PROFILE = 15;\n",
-     "    private static final int PRO_SMART_PROFILE = 15;\n    private static final int PRO_REMOTE_AR_SET = 16;\n    private static final int PRO_REMOTE_AR_CYCLE = 17;\n    private static final int PRO_BOKEH_TOGGLE = 18;\n    private static final int PRO_BOKEH_LEVEL = 19;\n    private static final int PRO_VISION_INFO = 20;\n"),
+     "    private static final int PRO_SMART_PROFILE = 15;\n    private static final int PRO_REMOTE_AR_SET = 16;\n    private static final int PRO_REMOTE_AR_CYCLE = 17;\n    private static final int PRO_BOKEH_TOGGLE = 18;\n    private static final int PRO_BOKEH_LEVEL = 19;\n    private static final int PRO_VISION_INFO = 20;\n    private static final int PRO_BACKGROUND_CYCLE = 21;\n"),
     ("private void proUpdateVisionFaceDetectionMode()",
      "    private void proSetSmartZoom(boolean enabled) {\n",
      """    private void proUpdateVisionFaceDetectionMode() {
@@ -213,12 +220,17 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
                     Ln.i("POCO V8.4 bokeh level = " + level);
                 } else if (command == PRO_VISION_INFO) {
                     Ln.i("POCO V8.4 Vision: " + RemoteVisionState.get().status());
+                } else if (command == PRO_BACKGROUND_CYCLE) {
+                    Ln.i("POCO V8.7 fondo = " + RemoteVisionState.get().cycleBackground(direction));
                 } else {
                     Ln.w("POCO Camera2: unsupported command " + command);"""),
 ])
 
 
 edit("app/src/input_manager.c", [
+    ("POCO V8.7 background key passthrough",
+     "            case SDLK_G:\n                if (video && !shift && !repeat && down) {\n",
+     "            case SDLK_G:\n                if (im->camera) break; // POCO V8.7 background key passthrough\n                if (video && !shift && !repeat && down) {\n"),
     ("POCO V8.4 phone-side AR cycle",
      """            if (sdl_keycode == SDLK_Y) {
                 sc_screen_cycle_camera_ar_overlay(im->screen, shift ? -1 : 1);
@@ -252,6 +264,9 @@ edit("app/src/input_manager.c", [
                     return;
                 case SDLK_J:
                     if (down && !repeat && !paused) camera_pro_control(im, 20, 0);
+                    return;
+                case SDLK_G:
+                    if (down && !repeat && !paused) camera_pro_control(im, 21, shift ? -1 : 1);
                     return;
                 case SDLK_T:"""),
     ("POCO V8.4: Alt+V=bokeh",

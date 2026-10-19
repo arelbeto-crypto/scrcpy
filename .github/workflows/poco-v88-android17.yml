@@ -32,13 +32,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: '37.1'
+          api-level: '37.0'
           arch: x86_64
           target: ${{ matrix.target }}
+          emulator-build: '15917651'
           ram-size: 4096M
           disk-size: 8192M
           disable-animations: true
-          # Use the current Android 17 QPR1 image, including 16KB native loading.
+          # Pin stable Emulator 37.1.11, which added API 37 image support.
+          # Keep 16KB native loading and verify the unchanged delivery APK.
           emulator-options: -no-window -gpu swiftshader -feature -GLDirectMem -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell getprop ro.build.version.release

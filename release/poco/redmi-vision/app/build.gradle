@@ -8,12 +8,14 @@ android {
 
     defaultConfig {
         // Preview installs alongside V8.6.1; its original signing key is not available here.
-        applicationId = 'com.poco.visioncoprocessor.v88'
-        minSdk = 23
+        applicationId = 'com.poco.visioncoprocessor.v89'
+        minSdk = 24
         targetSdk = 33
-        versionCode = 880
-        versionName = '8.8'
+        versionCode = 890
+        versionName = '8.9'
     }
+
+    sourceSets.main.java.srcDir '../../common/java'
 
     signingConfigs {
         debug {
@@ -44,8 +46,5 @@ android {
 dependencies {
     // Both models are bundled: after installing the APK, inference does not
     // depend on Play Services downloading a model.
-    implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
-    // Match Google's quickstart: beta1 calls a removed MediaPipeGraphRunnerConfig
-    // overload and crashes when paired with segmentation-selfie beta6.
-    implementation 'com.google.mlkit:face-mesh-detection:16.0.0-beta3'
+    implementation 'com.google.mediapipe:tasks-vision:1.1.1'
 }

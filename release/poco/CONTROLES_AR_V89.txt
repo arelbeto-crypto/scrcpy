@@ -1,0 +1,39 @@
+POCO V8.9 OPEN MASKS / scrcpy 5.0.1
+
+Abre POCO_V8_MENU.bat. La opcion 8 instala Redmi Vision V8.9.
+V8.9 es una app separada; el instalador detiene las versiones anteriores
+para evitar dos coprocesadores conectados y conserva sus aplicaciones/datos.
+
+Se conservan los cuatro modos de inicio:
+1: ID0 automatico. 2: ID3 automatico.
+3: ID0 1920x1080, 30 fps, 12 Mbps. 4: ID3 con esos mismos parametros.
+El procesamiento de efectos es el mismo en los cuatro modos.
+
+Alt+Y / Alt+Shift+Y: mascara siguiente/anterior.
+Alt+Shift+1: ninguna. Alt+Shift+2..9: ocho mascaras libres.
+Orden: Laguna (azul/dorado), Obsidiana, Porcelana, Mosaico solar,
+Sakura, Circuito aurora, Encaje lunar y Festival ambar.
+Las mascaras se ajustan a la malla facial; si no hay malla reciente, se ocultan.
+Alt+J: estado y latencia del coprocesador.
+
+Alt+G / Alt+Shift+G: fondo anterior/siguiente.
+Los fondos siguen siendo superposiciones discretas de 10-14%.
+Alt+V: bokeh ON/OFF. Alt+Shift+V: cuatro intensidades suaves.
+Alt+S: Smart Zoom ON/OFF. Alt+Shift+S: encuadre amplio/medio/cercano.
+Se mantienen la espera inicial de 0.6 s, retencion de 1.8 s y zoom acotado.
+
+CAMARA CONSERVADA
+Clic=AF; Shift+clic=AE; Alt+A=AF; Alt+K=bloqueo enfoque.
+Alt+Shift+A=AE; Alt+L=bloqueo AE; Alt+Shift+L=bloqueo AWB.
+Alt+Izq/Der=enfoque; Alt+Shift+Izq/Der=ISO; Alt+Shift+Arriba/Abajo=obturacion.
+Alt+RePag/AvPag=EV; Alt+Arriba/Abajo=zoom; Alt+M=modo AF.
+Alt+H=capacidades; Alt+0=reset; Alt+T=linterna; Alt+1..9=escenas.
+Aliases Alt+F/I/E, F1 y presets de zoom Alt+Ctrl+1..5 conservados.
+Acer: --hwdec=disabled y --no-audio.
+
+Modelos MediaPipe incluidos dentro del APK: no requiere descargar modelos
+al abrir la app ni suscripcion a un servicio de filtros. Ver LICENCIAS_V89.txt.
+El APK y scrcpy-server de este paquete deben usarse juntos.
+
+Las pruebas automaticas y la validacion real en el Redmi con Android 17
+son verificaciones distintas. BUILD_INFO_V8.txt identifica la compilacion.

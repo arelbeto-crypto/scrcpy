@@ -58,6 +58,17 @@ copy_file("RawAnalysisSampler.java",
 copy_file("VisionShaders.java", "server/src/main/java/com/genymobile/scrcpy/opengl/VisionShaders.java")
 copy_file("FaceMeshRenderer.java", "server/src/main/java/com/genymobile/scrcpy/opengl/FaceMeshRenderer.java")
 
+# V8.9: generated mask resources and canonical UV/topology are shared with the
+# companion. Java embedding also works in scrcpy's headless app_process server.
+for source in ASSETS.glob("Mask*.java"):
+    copy_file(source.name, "server/src/main/java/com/genymobile/scrcpy/opengl/" + source.name)
+common = ASSETS.parent / "common/java"
+if common.exists():
+    for source in common.rglob("*.java"):
+        target = ROOT / "server/src/main/java" / source.relative_to(common)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
 
 edit("server/src/main/java/com/genymobile/scrcpy/device/Streamer.java", [
     ("import com.genymobile.scrcpy.video.VisionBridge;",

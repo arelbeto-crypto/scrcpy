@@ -1,0 +1,16 @@
+All artwork in 1.svg through 8.svg and their generated PNG counterparts was
+created for this project in 2026 and is dedicated to the public domain under
+CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/
+
+To the extent possible under law, the authors waive all copyright and related
+or neighboring rights in these original mask designs. No third-party art,
+trademarks, photos, or character designs are incorporated. No attribution is
+required. Provided without warranty.
+
+build_masks.py is original project source under the repository code license.
+Mask geometry uses canonical MediaPipe UV coordinates; the separate Google
+canonical face topology is Apache-2.0 licensed (see ../upstream).
+
+Slots: 1 Laguna Filigree; 2 Obsidian Sentinel; 3 Porcelain Opera;
+4 Solar Mosaic; 5 Sakura Ink; 6 Aurora Circuit; 7 Lunar Lace;
+8 Ember Festival.

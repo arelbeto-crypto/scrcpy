@@ -52,13 +52,13 @@ public final class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("Redmi Vision Coprocessor V8.8");
+        title.setText("Redmi Vision Coprocessor V8.9");
         title.setTextSize(22);
         root.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView info = new TextView(this);
-        info.setText("\nProcesa segmentacion y tracking en este Redmi. "
+        info.setText("\nMediaPipe: segmentacion y tracking locales en este Redmi. "
                 + "El POCO conserva Camera2, render OpenGL, bokeh, AR y codificacion. "
                 + "Usa la misma red Wi-Fi/5 GHz. "
                 + "Antes de iniciar, deten el servicio de la version anterior si aun esta abierto.\n");

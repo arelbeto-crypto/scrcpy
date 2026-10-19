@@ -158,8 +158,12 @@ pixel = (C.c_ubyte * 4)(); read(17,16,1,1,0x1908,0x1401,pixel)
 assert tuple(pixel) == blue, 'First native OES analysis draw must contain clean camera pixels'
 print('shader_pixels: native OES first-draw regression and clean readback passed')
 
-# Render the real facial surface against a transparent buffer. A mask must leave
-# the eyes and lower face readable, including when its source triangles cover them.
+# Exercise the actual texture mask shader, with canonical UV orientation and
+# premultiplied uploads matching FaceMeshRenderer. No procedural fallback art.
+import base64
+import io
+import re
+from PIL import Image
 program = api(gl, 'glCreateProgram', U)()
 attach(program, shader(0x8B31, (base / 'mesh.vert').read_text()))
 attach(program, shader(0x8B30, (base / 'mesh.frag').read_text()))
@@ -168,21 +172,45 @@ api(gl, 'glGetProgramiv', None, U, U, P)(program, 0x8B82, C.byref(ok))
 assert ok.value, 'Facial mesh program linking'
 api(gl, 'glUseProgram', None, U)(program)
 mesh_arrays = []
-for name, values in [
-        ('mesh_pos', [0,1,0, 1,1,0, 0,0,0, 1,0,0]),
-        ('mesh_normal', [0,0,1] * 4), ('mesh_bary', [1/3,1/3,1/3] * 4)]:
-    data = (F * 12)(*values); mesh_arrays.append(data)
+for name, size, values in [
+        ('mesh_pos', 3, [0,1,0, 1,1,0, 0,0,0, 1,0,0]),
+        ('mesh_normal', 3, [0,0,1] * 4),
+        ('mesh_uv', 2, [0,0, 1,0, 0,1, 1,1])]:
+    data = (F * len(values))(*values); mesh_arrays.append(data)
     index = get_attribute(program, name.encode())
     if index >= 0:
-        enable_attribute(index); attribute_pointer(index, 3, 0x1406, 0, 0, data)
-u2(loc('motion'), 0, 0); u4(loc('face_rect'), 0, 0, 1, 1)
-u4(loc('eyes'), .30, .35, .70, .35); uf(loc('aspect'), 1)
-uf(loc('opacity'), 1); ui(loc('style'), 3)
-draw(5, 0, 4)
+        enable_attribute(index); attribute_pointer(index, size, 0x1406, 0, 0, data)
+u2(loc('motion'), 0, 0)
+ui(loc('mask_art'), 2)
+art_tex = U(); api(gl, 'glGenTextures', None, I, P)(1, C.byref(art_tex))
+active_texture(0x84C2); bind_texture(0x0DE1, art_tex)
+for param in [0x2801, 0x2800]: tex_param(0x0DE1, param, 0x2600)
+for param in [0x2802, 0x2803]: tex_param(0x0DE1, param, 0x812F)
 def mesh_pixel(x, y):
     value = (C.c_ubyte * 4)(); read(x,y,1,1,0x1908,0x1401,value)
     return tuple(value)
-assert mesh_pixel(9,20)[3] <= 16, 'Facial mask must leave the eyes open'
-assert mesh_pixel(16,10)[3] <= 4, 'Facial mask must leave the mouth and jaw uncovered'
-assert 20 <= mesh_pixel(16,20)[3] <= 128, 'The bridge must remain visible with a subtle translucent finish'
-print('shader_pixels: 3 facial mask coverage and opacity checks passed')
+payloads = re.findall(r'// PNG (\d+)\n\s*"([A-Za-z0-9+/=]+)"',
+                     (ROOT / 'release/poco/v84/MaskAssets.java').read_text())
+assert len(payloads) == 8, 'Missing embedded textures'
+for slot, encoded in payloads:
+    art = Image.open(io.BytesIO(base64.b64decode(encoded))).convert('RGBA')
+    raw = bytes(c for r,g,b,a in art.getdata() for c in
+                ((r*a+127)//255, (g*a+127)//255, (b*a+127)//255, a))
+    tex_image(0x0DE1, 0, 0x1908, art.width, art.height, 0, 0x1908, 0x1401, C.c_char_p(raw))
+    ui(loc('style'), int(slot)); uf(loc('opacity'), 1)
+    draw(5, 0, 4)
+    visible = []
+    for y in range(32):
+        for x in range(32):
+            expected = art.getpixel((x*16+8, (31-y)*16+8))[3]
+            pixel = mesh_pixel(x,y)
+            assert abs(pixel[3]-expected) <= 2, 'Mask UV orientation/alpha mismatch'
+            if pixel[3] > 230: visible.append((x,y))
+    assert visible, 'Each mask must actually draw opaque art'
+    x,y = visible[len(visible)//2]
+    uf(loc('opacity'), .5); draw(5,0,4)
+    assert 113 <= mesh_pixel(x,y)[3] <= 129, 'Stale tracking must fade the mask'
+    uf(loc('opacity'), 0); draw(5,0,4)
+    assert mesh_pixel(x,y)[3] == 0, 'Missing/stale face must leave no mask'
+    assert api(gl, 'glGetError', U)() == 0, 'Texture mask OpenGL error'
+print('shader_pixels: 8 texture masks, 8192 UV/alpha samples and loss fade passed')

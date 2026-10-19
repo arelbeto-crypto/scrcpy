@@ -28,19 +28,20 @@ $n = [int](Read-Host "Numero")
 if ($n -lt 1 -or $n -gt $devices.Count) { throw "Seleccion invalida" }
 $serial = $devices[$n-1]
 
-Write-Host "Instalando Redmi Vision 8.8 junto a la version anterior en $serial..."
+Write-Host "Instalando Redmi Vision 8.9 junto a la version anterior en $serial..."
 & $adb -s $serial install -r $apk
 if ($LASTEXITCODE -ne 0) {
-    throw "Fallo adb install. Si aparece INSTALL_FAILED_UPDATE_INCOMPATIBLE, la firma de otra preview V8.8 es distinta. No se ha desinstalado ni borrado ninguna app."
+    throw "Fallo adb install. Si aparece INSTALL_FAILED_UPDATE_INCOMPATIBLE, la firma de otra preview V8.9 es distinta. No se ha desinstalado ni borrado ninguna app."
 }
 
 Write-Host "Deteniendo el servicio anterior para evitar dos conexiones; su app y datos se conservan."
 & $adb -s $serial shell am force-stop com.poco.visioncoprocessor
 & $adb -s $serial shell am force-stop com.poco.visioncoprocessor.v87
-if ($LASTEXITCODE -ne 0) { throw "Se instalo V8.8, pero no se pudo detener la version anterior. Detenla antes de abrir V8.8." }
+& $adb -s $serial shell am force-stop com.poco.visioncoprocessor.v88
+if ($LASTEXITCODE -ne 0) { throw "Se instalo V8.9, pero no se pudo detener la version anterior. Detenla antes de abrir V8.9." }
 
-Write-Host "Abriendo Redmi Vision 8.8..."
-& $adb -s $serial shell am start -n com.poco.visioncoprocessor.v88/com.poco.visioncoprocessor.MainActivity
+Write-Host "Abriendo Redmi Vision 8.9..."
+& $adb -s $serial shell am start -n com.poco.visioncoprocessor.v89/com.poco.visioncoprocessor.MainActivity
 if ($LASTEXITCODE -ne 0) { throw "Se instalo, pero no se pudo abrir automaticamente." }
 
 Write-Host ""

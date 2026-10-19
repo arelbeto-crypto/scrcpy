@@ -1,0 +1,36 @@
+POCO / REDMI VISION V8.9 - COMPONENTES LIBRES
+
+MediaPipe Tasks Vision 1.1.1 y geometria facial canonica:
+Google / MediaPipe Authors. Apache License 2.0.
+https://github.com/google-ai-edge/mediapipe
+Texto completo: LICENSES/MEDIAPIPE-APACHE-2.0.txt
+
+Los modelos estan incluidos sin modificar dentro del APK. Las fichas oficiales
+identifican Apache License 2.0 para los modelos distribuidos:
+
+FaceMesh V2:
+https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf
+BlazeFace Short Range:
+https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Short%20Range%29.pdf
+Blendshape V2 (incluido en el bundle facial oficial):
+https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf
+Selfie Segmentation:
+https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Selfie%20Segmentation.pdf
+
+URLs exactas y SHA256: release/poco/download_vision_models.py en el codigo fuente.
+Los modelos se descargan durante la compilacion; la app no necesita descargarlos.
+
+Las ocho mascaras son arte original de este proyecto, CC0 1.0 Universal.
+Se incluyen SVG editables, PNG y generador en el codigo fuente:
+release/poco/assets/masks/
+https://creativecommons.org/publicdomain/zero/1.0/
+
+scrcpy: Genymobile y colaboradores, Apache License 2.0.
+https://github.com/Genymobile/scrcpy
+
+Codigo fuente de esta version:
+https://github.com/arelbeto-crypto/scrcpy/tree/camera-vision-v89-open-masks
+
+Sin suscripcion ni API comercial de lentes. Las dependencias de compilacion,
+como CairoSVG y Pillow, se usan para preparar los recursos y no se ejecutan
+en el telefono ni en la Acer al usar scrcpy.

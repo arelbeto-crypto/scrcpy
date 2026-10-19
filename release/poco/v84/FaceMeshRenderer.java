@@ -1,6 +1,10 @@
 package com.genymobile.scrcpy.opengl;
 
 import android.opengl.GLES20;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.util.Base64;
+import com.poco.vision.FaceTopology;
 import com.genymobile.scrcpy.video.RemoteVisionState.FaceFrame;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -9,44 +13,75 @@ import java.nio.FloatBuffer;
 /** Deforms a shaded surface to the detected mesh, including its actual eye and mouth topology. */
 public final class FaceMeshRenderer {
     private int program;
-    private int positionLoc, normalLoc, baryLoc, motionLoc, rectLoc, styleLoc, opacityLoc;
-    private int eyesLoc, aspectLoc;
+    private int positionLoc, normalLoc, motionLoc, styleLoc, opacityLoc, uvLoc, textureLoc;
+    private final int[] textures = new int[8];
     private FaceFrame uploaded;
     private FloatBuffer vertices;
     private float[] normals;
     private int vertexCount;
 
     public void init() throws OpenGLException {
+        release();
         program = GLUtils.createProgram(VisionShaders.MESH_VERTEX, VisionShaders.MESH_FRAGMENT);
         if (program == 0) throw new OpenGLException("Cannot create facial mesh shader");
         positionLoc = GLES20.glGetAttribLocation(program, "mesh_pos");
         normalLoc = GLES20.glGetAttribLocation(program, "mesh_normal");
-        baryLoc = GLES20.glGetAttribLocation(program, "mesh_bary");
         motionLoc = GLES20.glGetUniformLocation(program, "motion");
-        rectLoc = GLES20.glGetUniformLocation(program, "face_rect");
         styleLoc = GLES20.glGetUniformLocation(program, "style");
         opacityLoc = GLES20.glGetUniformLocation(program, "opacity");
-        eyesLoc = GLES20.glGetUniformLocation(program, "eyes");
-        aspectLoc = GLES20.glGetUniformLocation(program, "aspect");
+        uvLoc = GLES20.glGetAttribLocation(program, "mesh_uv");
+        textureLoc = GLES20.glGetUniformLocation(program, "mask_art");
+        GLES20.glGenTextures(8, textures, 0);
+        try {
+            int[] pixels = new int[512 * 512];
+            ByteBuffer rgba = ByteBuffer.allocateDirect(pixels.length * 4);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            for (int i = 0; i < 8; i++) {
+                byte[] png = Base64.decode(MaskAssets.PNG[i], Base64.DEFAULT);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(png, 0, png.length);
+                if (bitmap == null) throw new IllegalStateException("Invalid bundled mask PNG");
+                try { bitmap.getPixels(pixels, 0, 512, 0, 0, 512, 512); }
+                finally { bitmap.recycle(); }
+                rgba.clear();
+                // Premultiply once before bilinear filtering to avoid dark transparent fringes.
+                // getPixels returns straight ARGB, even from a premultiplied Bitmap.
+                for (int pixel : pixels) {
+                    int alpha = pixel >>> 24;
+                    rgba.put((byte)((((pixel >> 16) & 255) * alpha + 127) / 255))
+                            .put((byte)((((pixel >> 8) & 255) * alpha + 127) / 255))
+                            .put((byte)(((pixel & 255) * alpha + 127) / 255)).put((byte)alpha);
+                }
+                rgba.flip();
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[i]);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+                GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 512, 512, 0,
+                        GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, rgba);
+            }
+            GLUtils.checkGlError();
+        } catch (RuntimeException e) { release(); throw e; }
     }
 
     public void draw(FaceFrame face, int style, float aspect, float dx, float dy, float opacity) {
-        if ((style != 3 && style != 7) || face == null || face.mesh == null
-                || face.triangles == null || face.triangles.length == 0 || opacity <= 0) return;
+        if (program == 0 || style < 1 || style > 8 || face == null || face.mesh == null
+                || face.mesh.length < FaceTopology.VERTEX_COUNT * 3 || opacity <= 0) return;
         if (uploaded != face) upload(face, aspect);
+        if (vertexCount == 0) return;
         GLES20.glUseProgram(program);
         GLES20.glUniform2f(motionLoc, dx, dy);
-        GLES20.glUniform4f(rectLoc, face.x, face.y, face.w, face.h);
         GLES20.glUniform1i(styleLoc, style);
         GLES20.glUniform1f(opacityLoc, opacity);
-        GLES20.glUniform4f(eyesLoc, face.leftEyeX, face.leftEyeY, face.rightEyeX, face.rightEyeY);
-        GLES20.glUniform1f(aspectLoc, aspect);
         GLES20.glEnableVertexAttribArray(positionLoc);
         GLES20.glEnableVertexAttribArray(normalLoc);
-        GLES20.glEnableVertexAttribArray(baryLoc);
-        vertices.position(0); GLES20.glVertexAttribPointer(positionLoc, 3, GLES20.GL_FLOAT, false, 36, vertices);
-        vertices.position(3); GLES20.glVertexAttribPointer(normalLoc, 3, GLES20.GL_FLOAT, false, 36, vertices);
-        vertices.position(6); GLES20.glVertexAttribPointer(baryLoc, 3, GLES20.GL_FLOAT, false, 36, vertices);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[style - 1]);
+        GLES20.glUniform1i(textureLoc, 0);
+        GLES20.glEnableVertexAttribArray(uvLoc);
+        vertices.position(0); GLES20.glVertexAttribPointer(positionLoc, 3, GLES20.GL_FLOAT, false, 32, vertices);
+        vertices.position(3); GLES20.glVertexAttribPointer(normalLoc, 3, GLES20.GL_FLOAT, false, 32, vertices);
+        vertices.position(6); GLES20.glVertexAttribPointer(uvLoc, 2, GLES20.GL_FLOAT, false, 32, vertices);
         GLES20.glEnable(GLES20.GL_BLEND);
         GLES20.glBlendFuncSeparate(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA,
                 GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
@@ -54,13 +89,17 @@ public final class FaceMeshRenderer {
         GLES20.glDisable(GLES20.GL_BLEND);
         GLES20.glDisableVertexAttribArray(positionLoc);
         GLES20.glDisableVertexAttribArray(normalLoc);
-        GLES20.glDisableVertexAttribArray(baryLoc);
+        GLES20.glDisableVertexAttribArray(uvLoc);
         GLUtils.checkGlError();
     }
 
     private void upload(FaceFrame face, float aspect) {
         float[] points = face.mesh;
-        short[] indices = face.triangles;
+        short[] indices = FaceTopology.TRIANGLES;
+        vertexCount = 0;
+        for (int i = 0; i < FaceTopology.VERTEX_COUNT * 3; i++) {
+            if (Float.isNaN(points[i]) || Float.isInfinite(points[i])) return;
+        }
         if (normals == null || normals.length != points.length) normals = new float[points.length];
         else java.util.Arrays.fill(normals, 0f);
         for (int t = 0; t < indices.length; t += 3) {
@@ -72,7 +111,7 @@ public final class FaceMeshRenderer {
             normals[b]+=nx; normals[b+1]+=ny; normals[b+2]+=nz;
             normals[c]+=nx; normals[c+1]+=ny; normals[c+2]+=nz;
         }
-        int floats = indices.length * 9;
+        int floats = indices.length * 8;
         if (vertices == null || vertices.capacity() < floats) {
             vertices = ByteBuffer.allocateDirect(floats * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
         }
@@ -83,7 +122,8 @@ public final class FaceMeshRenderer {
             float length = (float)Math.sqrt(normals[p]*normals[p]+normals[p+1]*normals[p+1]+normals[p+2]*normals[p+2]);
             if (length < .0000001f) vertices.put(0).put(0).put(1);
             else vertices.put(normals[p]/length).put(normals[p+1]/length).put(normals[p+2]/length);
-            vertices.put(i%3 == 0 ? 1f : 0f).put(i%3 == 1 ? 1f : 0f).put(i%3 == 2 ? 1f : 0f);
+            int uv = (indices[i] & 65535) * 2;
+            vertices.put(FaceTopology.UV[uv]).put(FaceTopology.UV[uv + 1]);
         }
         vertices.flip();
         vertexCount = indices.length;
@@ -91,7 +131,9 @@ public final class FaceMeshRenderer {
     }
 
     public void release() {
+        GLES20.glDeleteTextures(textures.length, textures, 0);
+        java.util.Arrays.fill(textures, 0);
         if (program != 0) GLES20.glDeleteProgram(program);
-        program = 0; vertices = null; normals = null; uploaded = null;
+        program = 0; vertices = null; normals = null; uploaded = null; vertexCount = 0;
     }
 }

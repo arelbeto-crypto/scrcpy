@@ -3,9 +3,10 @@
 
 Run on an Android emulator attached through adb. A local protocol peer sends
 portrait JPEGs; the real app must return segmentation and a complete face mesh.
-No mocked Android or ML Kit code is involved.
+No mocked Android or model code is involved.
 """
 import base64
+import json
 import math
 import pathlib
 import re
@@ -21,6 +22,7 @@ import zlib
 APK, PACKAGE = sys.argv[1:3]
 ROOT = pathlib.Path(__file__).resolve().parent
 JPEG = base64.b64decode((ROOT / 'face_jpeg.b64').read_bytes())
+BLANK = base64.b64decode((ROOT / 'blank_jpeg.b64').read_bytes())
 WIDTH, HEIGHT = 480, 562
 MAGIC = 0x50565231
 
@@ -69,11 +71,15 @@ def exercise_models(server, done, release, errors):
             conn.sendall(packet(1, struct.pack('>IIIII', 1, 0x68323634, WIDTH, HEIGHT, 1)))
             conn.sendall(packet(2, struct.pack('>II', WIDTH, HEIGHT)))
             stopped = threading.Event()
+            blanking = threading.Event()
+            send_lock = threading.Lock()
             def send_frames():
                 try:
                     while not stopped.is_set():
-                        pts = time.monotonic_ns() // 1000
-                        conn.sendall(packet(4, struct.pack('>qIII', pts, WIDTH, HEIGHT, len(JPEG)) + JPEG))
+                        with send_lock:
+                            image,w,h = (BLANK,320,240) if blanking.is_set() else (JPEG,WIDTH,HEIGHT)
+                            pts = time.monotonic_ns() // 1000
+                            conn.sendall(packet(4, struct.pack('>qIII', pts, w, h, len(image)) + image))
                         stopped.wait(.20)
                 except OSError:
                     pass
@@ -111,7 +117,31 @@ def exercise_models(server, done, release, errors):
                         indices = struct.unpack_from('>' + 'H' * triangles, payload, offset + 4)
                         assert max(indices) < point_count, 'Out-of-bounds mesh topology'
                         assert len(payload) == offset + 4 + triangles * 2, 'Face packet length mismatch'
+                        if PACKAGE.endswith('.v89'):
+                            (ROOT / 'android-v89-mesh.json').write_text(json.dumps({
+                                'mesh': list(mesh), 'triangles': list(indices),
+                                'width': WIDTH, 'height': HEIGHT, 'face': list(face)}))
                         counts[kind] += 1
+                if PACKAGE.endswith('.v89'):
+                    # New session plus blank frames exercises epoch cancellation,
+                    # tracker reset, and explicit face loss with the real model.
+                    with send_lock:
+                        blanking.set()
+                        cutoff = time.monotonic_ns() // 1000
+                        conn.sendall(packet(2, struct.pack('>II', 320, 240)))
+                    absent = 0
+                    while absent < 3:
+                        magic,kind,length = struct.unpack('>IBI', exact(conn, 9))
+                        assert magic == MAGIC and 0 <= length <= 1048576
+                        payload = exact(conn, length)
+                        if kind == 17:
+                            pts, = struct.unpack_from('>q', payload)
+                            if pts < cutoff:
+                                continue
+                            point_count, = struct.unpack_from('>I', payload, 56)
+                            assert point_count == 0, 'Blank new session retained a stale face'
+                            absent += 1
+                    print('New session / no-face cancellation: 3 explicit absent results passed', flush=True)
             finally:
                 stopped.set()
                 sender.join(2)

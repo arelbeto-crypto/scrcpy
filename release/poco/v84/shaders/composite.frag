@@ -122,63 +122,6 @@ void main() {
             color.rgb=mix(src.rgb,replacement,background);
         }
     }
-    float subject_edge=clamp((expanded-core)*3.0,0.0,1.0)*mask_valid;
-    if(face_valid>0.001 && ar_mode>0) {
-        vec2 center=face_rect.xy+face_rect.zw*0.5;
-        vec2 q=local(p,center);
-        vec2 le=local(left_eye,center), re=local(right_eye,center);
-        vec2 mouth=local(mouth_pos,center), nose=local(nose_pos,center);
-        float eye_span=length((right_eye-left_eye)*vec2(aspect,1.0))/max(aspect,0.1);
-        float fw=max(eye_span*2.45,face_rect.z*0.60), fh=face_rect.w;
-        float opacity=face_valid;
-        if(ar_mode==1) {
-            vec2 radius=vec2(eye_span*0.44,fh*0.105);
-            float e=min(ellipse(q,le,radius),ellipse(q,re,radius));
-            float rim=(1.0-smoothstep(0.96,1.07,e))*smoothstep(0.78,0.87,e);
-            float lens=(1.0-smoothstep(0.78,0.91,e))*0.24;
-            float bridge=1.0-smoothstep(fh*0.012,fh*0.024,segdist(q,le,re));
-            vec3 metal=mix(vec3(0.015,0.025,0.055),vec3(0.82,0.61,0.20),0.5+0.5*sin(q.y*70.0));
-            color=over(color,metal,max(rim,bridge)*opacity);
-            color=over(color,vec3(0.02,0.07,0.15),lens*opacity);
-            color.rgb+=vec3(0.03,0.28,0.55)*(1.0-smoothstep(1.05,1.30,e))*smoothstep(0.94,1.06,e)*opacity*0.35;
-        } else if(ar_mode==2) {
-            vec2 c=mix(nose,mouth,0.55);
-            float l=ellipse(q,c-vec2(fw*0.12,0.0),vec2(fw*0.19,fh*0.050));
-            float r=ellipse(q,c+vec2(fw*0.12,0.0),vec2(fw*0.19,fh*0.050));
-            float alpha=1.0-smoothstep(0.85,1.08,min(l,r));
-            float hair=0.035*sin((q.x-c.x)*1800.0+(q.y-c.y)*350.0);
-            color=over(color,vec3(0.035,0.018,0.010)+hair,alpha*opacity);
-        } else if(ar_mode==4) {
-            vec2 hc=center+vec2(0.0,-fh*0.64);
-            float e=ellipse(q,hc,vec2(fw*0.46,fh*0.075));
-            float ring=(1.0-smoothstep(1.01,1.10,e))*smoothstep(0.77,0.87,e);
-            float glow=(1.0-smoothstep(1.05,1.50,e))*smoothstep(0.82,1.02,e);
-            color=over(color,vec3(1.0,0.83,0.31),ring*opacity);
-            color.rgb+=vec3(0.48,0.24,0.035)*glow*opacity;
-        } else if(ar_mode==5) {
-            vec2 lc=local(cheek_left,center), rc=local(cheek_right,center);
-            float blush=max(exp(-pow(ellipse(q,lc,vec2(fw*0.14,fh*0.07)),2.0)*2.4),
-                            exp(-pow(ellipse(q,rc,vec2(fw*0.14,fh*0.07)),2.0)*2.4));
-            color=over(color,vec3(0.98,0.16,0.32),blush*0.40*opacity);
-        } else if(ar_mode==6) {
-            float pulse=1.0+0.05*sin(time_s*2.2);
-            float hearts=heart(q,center+vec2(-fw*0.66,-fh*0.31),vec2(fw*0.11,fh*0.075)*pulse);
-            hearts=max(hearts,heart(q,center+vec2(fw*0.65,-fh*0.17),vec2(fw*0.095,fh*0.065)*pulse));
-            hearts=max(hearts,heart(q,center+vec2(fw*0.08,-fh*0.79),vec2(fw*0.08,fh*0.055)*pulse));
-            color=over(color,vec3(1.0,0.12,0.34),hearts*opacity);
-        } else if(ar_mode==7) {
-            color.rgb+=vec3(0.0,0.42,0.65)*subject_edge*opacity;
-        } else if(ar_mode==8) {
-            vec2 c=center+vec2(0.0,-fh*0.56);
-            vec2 u=(q-c)/vec2(max(fw,0.001),max(fh,0.001));
-            float teeth=min(abs(u.x+0.30),min(abs(u.x),abs(u.x-0.30)));
-            float top=-0.18+teeth*1.25;
-            float shape=step(abs(u.x),0.43)*smoothstep(top-0.018,top+0.006,u.y)*(1.0-smoothstep(0.055,0.075,u.y));
-            float gold=0.62+0.38*smoothstep(-0.18,0.07,u.y);
-            color=over(color,vec3(1.0,0.65,0.12)*gold,shape*opacity);
-            float gem=1.0-smoothstep(0.025,0.035,length(u-vec2(0.0,0.01)));
-            color=over(color,vec3(0.04,0.34,0.9),gem*opacity);
-        }
-    }
+    // All eight face effects are now rendered on measured canonical mesh UVs.
     gl_FragColor=vec4(clamp(color.rgb,0.0,1.0),1.0);
 }

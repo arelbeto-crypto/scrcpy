@@ -33,12 +33,19 @@ def tree():
     return ET.fromstring(adb('shell', 'cat', '/sdcard/vision-smoke.xml'))
 
 def tap_node(predicate):
-    nodes = list(tree().iter('node'))
-    for node in nodes:
-        if predicate(node.attrib):
-            x1,y1,x2,y2 = map(int, re.findall(r'\d+', node.attrib['bounds']))
-            adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
-            return
+    for attempt in range(4):
+        nodes = list(tree().iter('node'))
+        for node in nodes:
+            if predicate(node.attrib):
+                x1,y1,x2,y2 = map(int, re.findall(r'\d+', node.attrib['bounds']))
+                adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
+                return
+        scrolls = [n for n in nodes if n.attrib.get('scrollable') == 'true']
+        if not scrolls or attempt == 3:
+            break
+        x1,y1,x2,y2 = map(int, re.findall(r'\d+', scrolls[0].attrib['bounds']))
+        adb('shell', 'input', 'swipe', str((x1+x2)//2), str(y2-30),
+            str((x1+x2)//2), str(y1+30), '350')
     raise AssertionError('Required app control is not visible; labels=' +
                          repr([n.attrib.get('text') for n in nodes if n.attrib.get('text')]))
 

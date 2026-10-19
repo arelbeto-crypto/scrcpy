@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -114,6 +115,9 @@ public final class MainActivity extends Activity {
     }
 
     private void startVision(String address) {
+        InputMethodManager keyboard = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null) keyboard.hideSoftInputFromWindow(host.getWindowToken(), 0);
+        host.clearFocus();
         Intent intent = new Intent(this, VisionService.class);
         intent.setAction(VisionService.ACTION_START);
         if (!address.isEmpty()) {

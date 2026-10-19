@@ -1,0 +1,47 @@
+name: POCO V8.8 Android 17 Verification
+on:
+  push:
+    branches: [camera-vision-v88-android17-check]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android17-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: poco-v88-android-build
+          run-id: 39304611013
+          github-token: ${{ github.token }}
+          path: output
+      - name: Verify the exact delivery APK
+        run: |
+          echo '73d9b49b0c6b5f646b868e18bfd409e5f60d1a55d3541a7a1217af0e6a215ee6  output/RedmiVision-V8.8.apk' | sha256sum -c -
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 37
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell getprop ro.build.version.release
+            adb shell getprop ro.build.version.sdk
+            test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 37
+            python3 release/poco/tests/android_smoke.py output/RedmiVision-V8.8.apk com.poco.visioncoprocessor.v88
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: poco-v88-android17-runtime-logs
+          path: release/poco/tests/android-*-logcat.txt
+          retention-days: 90

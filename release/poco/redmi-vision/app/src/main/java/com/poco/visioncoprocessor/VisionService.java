@@ -312,7 +312,7 @@ public final class VisionService extends Service {
         if (width > 0 && height > 0) {
             streamWidth = width;
             streamHeight = height;
-            configureDecoder(width, height);
+            tryConfigureDecoder(width, height);
         }
     }
 
@@ -325,7 +325,16 @@ public final class VisionService extends Service {
         skipFully(in, size - 8);
         streamWidth = width;
         streamHeight = height;
-        configureDecoder(width, height);
+        tryConfigureDecoder(width, height);
+    }
+
+    private void tryConfigureDecoder(int width, int height) {
+        try {
+            configureDecoder(width, height);
+        } catch (IOException | RuntimeException e) {
+            status = "POCO conectado | esperando decoder compatible: "
+                    + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
     }
 
     private void readVideo(DataInputStream in, int size) throws IOException {

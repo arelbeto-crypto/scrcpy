@@ -240,6 +240,8 @@ CAMERA_API = r'''
     private int proSmartProfile = 1;
     private int proSmartTick;
     private int proSmartMissingFrames;
+    private float proZoomTarget = -1.0f;
+    private int proZoomRampTick;
     private static final int PRO_FOCUS = 0;
     private static final int PRO_ISO = 1;
     private static final int PRO_EXPOSURE = 2;
@@ -427,9 +429,33 @@ CAMERA_API = r'''
         if (proSmartZoom) {
             proSetSmartZoom(false);
         }
-        zoom = clampZoom(ratios[index]);
+        proZoomTarget = clampZoom(ratios[index]);
+        proZoomRampTick = 0;
+        Ln.i("POCO V8.6.1 zoom target = " + proZoomTarget + "x");
+    }
+
+    private void proUpdateZoomRamp() {
+        if (proZoomTarget <= 0 || currentSession == null || requestBuilder == null) return;
+        if (++proZoomRampTick < 2) return;
+        proZoomRampTick = 0;
+
+        float diff = proZoomTarget - zoom;
+        if (Math.abs(diff) < 0.006f) {
+            zoom = proZoomTarget;
+            proZoomTarget = -1.0f;
+        } else {
+            float maxStep = Math.max(0.018f, Math.min(0.045f, Math.abs(diff) * 0.16f));
+            float step = Math.max(-maxStep, Math.min(maxStep, diff));
+            zoom = clampZoom(zoom + step);
+        }
+
         requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
-        Ln.i("POCO V8.3 zoom preset = " + zoom + "x");
+        try {
+            setRepeatingRequest(currentSession, requestBuilder.build());
+        } catch (CameraAccessException | IllegalArgumentException | IllegalStateException e) {
+            Ln.w("POCO V8.6.1 zoom ramp rejected: " + e.getMessage());
+            proZoomTarget = -1.0f;
+        }
     }
 
     private int proFaceDetectMode() {
@@ -452,6 +478,7 @@ CAMERA_API = r'''
             return;
         }
         proSmartZoom = enabled;
+        if (enabled) proZoomTarget = -1.0f;
         proSmartTick = 0;
         proSmartMissingFrames = 0;
         if (proHasRequestKey(CaptureRequest.STATISTICS_FACE_DETECT_MODE)) {
@@ -464,10 +491,9 @@ CAMERA_API = r'''
     private void proUpdateSmartZoom(TotalCaptureResult result) {
         if (!proSmartZoom || currentSession == null || requestBuilder == null) return;
 
-        // Run the framing controller at ~5 Hz at 30 fps. Camera2 keeps
-        // detecting every frame, but we do not rewrite the repeating request
-        // on every result.
-        if (++proSmartTick < 6) return;
+        // 10 Hz controller: frequent small changes look much more natural than
+        // large 5 Hz jumps.
+        if (++proSmartTick < 3) return;
         proSmartTick = 0;
 
         android.hardware.camera2.params.Face[] faces =
@@ -479,8 +505,8 @@ CAMERA_API = r'''
         float desired;
 
         if (!hasFace) {
-            // Avoid pumping the zoom if one or two face results are missed.
-            if (++proSmartMissingFrames < 6) return;
+            // Hold framing for ~2 seconds through brief detector misses.
+            if (++proSmartMissingFrames < 20) return;
             desired = 1.0f;
         } else {
             proSmartMissingFrames = 0;
@@ -498,30 +524,38 @@ CAMERA_API = r'''
 
             float coverage = Math.max((float) best.width() / active.width(),
                                       (float) best.height() / active.height());
-            float[] targetCoverage = {0.22f, 0.31f, 0.40f}; // wide, medium, close
-            float[] maxProfileZoom = {2.0f, 3.0f, 4.0f};
+            float[] targetCoverage = {0.20f, 0.28f, 0.36f}; // wide, medium, close
+            float[] maxProfileZoom = {1.8f, 2.6f, 3.4f};
             int profile = Math.max(0, Math.min(2, proSmartProfile));
+            float target = targetCoverage[profile];
 
-            desired = zoom * targetCoverage[profile] / Math.max(0.05f, coverage);
+            // 9% hysteresis around the desired framing prevents "breathing".
+            float lower = target * 0.91f;
+            float upper = target * 1.09f;
+            if (coverage >= lower && coverage <= upper) return;
+
+            desired = zoom * target / Math.max(0.05f, coverage);
             desired = Math.max(1.0f, Math.min(maxProfileZoom[profile], desired));
         }
 
         desired = clampZoom(desired);
 
-        // Face present: responsive but damped. Face lost: slower return to 1x.
-        float alpha = hasFace ? 0.14f : 0.08f;
-        float smoothed = clampZoom(zoom + (desired - zoom) * alpha);
+        float alpha = hasFace ? 0.060f : 0.025f;
+        float proposed = zoom + (desired - zoom) * alpha;
 
-        // Dead zone removes small face-detection jitter.
-        float deadZone = Math.max(0.035f, zoom * 0.018f);
-        if (Math.abs(smoothed - zoom) < deadZone) return;
+        // Hard velocity limit: even a sudden face-size change cannot snap zoom.
+        float maxStep = hasFace ? 0.040f : 0.018f;
+        float delta = Math.max(-maxStep, Math.min(maxStep, proposed - zoom));
 
-        zoom = smoothed;
+        float deadZone = Math.max(0.012f, zoom * 0.006f);
+        if (Math.abs(delta) < deadZone) return;
+
+        zoom = clampZoom(zoom + delta);
         requestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
         try {
             setRepeatingRequest(currentSession, requestBuilder.build());
         } catch (CameraAccessException | IllegalArgumentException | IllegalStateException e) {
-            Ln.w("POCO V8.3 Smart Zoom update rejected: " + e.getMessage());
+            Ln.w("POCO V8.6.1 Smart Zoom update rejected: " + e.getMessage());
         }
     }
 
@@ -532,6 +566,7 @@ CAMERA_API = r'''
         if (iso != null && iso > 0) proLastIso = iso;
         if (exposure != null && exposure > 0) proLastExposureNs = exposure;
         if (focus != null) proLastFocus = focus;
+        proUpdateZoomRamp();
         proUpdateSmartZoom(result);
     }
 
@@ -776,6 +811,9 @@ CAMERA_API = r'''
 
 '''
 edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
+    ("POCO V8.6.1 fine manual zoom",
+     "    private static final float ZOOM_FACTOR = 1 + 1 / 16f;",
+     "    private static final float ZOOM_FACTOR = 1 + 1 / 32f;"),
     ("import com.genymobile.scrcpy.model.Position;",
      "import com.genymobile.scrcpy.model.Size;\n",
      "import com.genymobile.scrcpy.model.Size;\nimport com.genymobile.scrcpy.model.Position;\nimport com.genymobile.scrcpy.model.Point;\n"),
@@ -790,7 +828,7 @@ edit("server/src/main/java/com/genymobile/scrcpy/video/CameraCapture.java", [
      "                    zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);\n                    proCharacteristics = characteristics;"),
     ("POCO V8.3 manual zoom override",
      "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();",
-     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();\n            if (proSmartZoom) proSetSmartZoom(false); // POCO V8.3 manual zoom override"),
+     "    private void zoom(boolean in) {\n        cameraHandler.post(() -> {\n            assertCameraThread();\n            if (proSmartZoom) proSetSmartZoom(false); // POCO V8.3 manual zoom override\n            proZoomTarget = -1.0f;"),
 
     ("proUpdateMeasurements(result);",
      "            @Override\n            public void onCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {",

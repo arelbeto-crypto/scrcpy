@@ -35,3 +35,7 @@ Aliases Alt+F/I/E y F1 conservados. Acer: --hwdec=disabled y --no-audio.
 El APK y scrcpy-server de este paquete deben usarse juntos.
 La instalacion, firma, empaquetado y prueba de Android se comprueban por
 separado. La alineacion y fluidez finales requieren probar los telefonos reales.
+
+Se corrigio la incompatibilidad entre Face Mesh beta1 y Selfie Segmentation beta6
+que causaba NoSuchMethodError al cargar el modelo facial. Se usa Face Mesh beta3,
+la misma combinacion que el quickstart oficial de Google.

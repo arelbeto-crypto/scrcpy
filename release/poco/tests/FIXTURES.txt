@@ -1,5 +1,5 @@
 face_jpeg.b64: Grace Hopper portrait, US Navy photograph, public domain.
 Source copy: Matplotlib mpl-data/sample_data/grace_hopper.jpg.
-Resized to 320x375 and encoded as JPEG for Android integration tests.
+Resized to 480x562 and encoded as JPEG for Android integration tests.
 Original photo: https://commons.wikimedia.org/wiki/File:Grace_Hopper.jpg
 blank_jpeg.b64: programmatically generated neutral image for negative-face probes.

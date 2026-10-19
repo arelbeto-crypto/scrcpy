@@ -21,11 +21,11 @@ import zlib
 APK, PACKAGE = sys.argv[1:3]
 ROOT = pathlib.Path(__file__).resolve().parent
 JPEG = base64.b64decode((ROOT / 'face_jpeg.b64').read_bytes())
-WIDTH, HEIGHT = 320, 375
+WIDTH, HEIGHT = 480, 562
 MAGIC = 0x50565231
 
 def adb(*args, check=True):
-    return subprocess.run(['adb', *args], check=check, text=True,
+    return subprocess.run(['adb', *args], check=check, text=True, timeout=30,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
 
 def tree():
@@ -33,12 +33,14 @@ def tree():
     return ET.fromstring(adb('shell', 'cat', '/sdcard/vision-smoke.xml'))
 
 def tap_node(predicate):
-    for node in tree().iter('node'):
+    nodes = list(tree().iter('node'))
+    for node in nodes:
         if predicate(node.attrib):
             x1,y1,x2,y2 = map(int, re.findall(r'\d+', node.attrib['bounds']))
             adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
             return
-    raise AssertionError('Required app control is not visible')
+    raise AssertionError('Required app control is not visible; labels=' +
+                         repr([n.attrib.get('text') for n in nodes if n.attrib.get('text')]))
 
 def packet(kind, payload):
     return struct.pack('>IBI', MAGIC, kind, len(payload)) + payload
@@ -110,7 +112,7 @@ def exercise_models(server, done, release, errors):
             # Keep this connection alive until the UI stops the service. Otherwise
             # its automatic reconnect can queue a stale socket for the next cycle.
             done.set()
-            release.wait(20)
+            release.wait()
     except Exception as exc:
         errors.append(exc)
     finally:
@@ -132,8 +134,7 @@ def main():
             if cycle == 0:
                 tap_node(lambda a: a.get('class') == 'android.widget.EditText')
                 adb('shell', 'input', 'text', '10.0.2.2')
-                adb('shell', 'input', 'keyevent', '4')  # hide keyboard
-            tap_node(lambda a: a.get('text') == 'Conectar a IP')
+            tap_node(lambda a: a.get('text', '').casefold() == 'conectar a ip')
             deadline = time.monotonic() + 50
             while not done.wait(.5):
                 assert adb('shell', 'pidof', PACKAGE, check=False).strip(), 'App closed during service start'
@@ -143,7 +144,7 @@ def main():
                 raise errors[0]
             services = adb('shell', 'dumpsys', 'activity', 'services', PACKAGE)
             assert 'isForeground=true' in services, 'Service did not enter foreground'
-            tap_node(lambda a: a.get('text') == 'Detener')
+            tap_node(lambda a: a.get('text', '').casefold() == 'detener')
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 if 'isForeground=true' not in adb('shell', 'dumpsys', 'activity', 'services', PACKAGE):

@@ -45,5 +45,7 @@ dependencies {
     // Both models are bundled: after installing the APK, inference does not
     // depend on Play Services downloading a model.
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
-    implementation 'com.google.mlkit:face-mesh-detection:16.0.0-beta1'
+    // Match Google's quickstart: beta1 calls a removed MediaPipeGraphRunnerConfig
+    // overload and crashes when paired with segmentation-selfie beta6.
+    implementation 'com.google.mlkit:face-mesh-detection:16.0.0-beta3'
 }
